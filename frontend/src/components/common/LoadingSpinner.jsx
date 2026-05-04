@@ -1,0 +1,11 @@
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export function LoadingSpinner({ className, label = "Loading" }) {
+  return (
+    <div className={cn("flex items-center justify-center gap-2 p-6 text-muted-foreground", className)}>
+      <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
