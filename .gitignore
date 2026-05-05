@@ -15,3 +15,4 @@ yarn.lock
 .codex
 
 .DS_Store
+pnpm-workspace.yaml
