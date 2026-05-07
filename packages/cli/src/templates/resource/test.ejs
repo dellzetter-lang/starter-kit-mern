@@ -1,0 +1,31 @@
+const request = require('supertest');
+const app = require('../../../../app'); // adjust path as needed
+
+describe('<%= resource.pascalName %> API', () => {
+  beforeAll(async () => {
+    // TODO: Connect to test database
+  });
+
+  afterAll(async () => {
+    // TODO: Clean up
+  });
+
+  test('should create <%= resource.name %>', async () => {
+    const res = await request(app)
+      .post('/api/<%= resource.kebabName %>')
+      .send({ 
+        <% resource.fields.filter(f => f.name !== '_id' && f.name !== 'createdAt' && f.name !== 'updatedAt').forEach(f => { %>
+        <%= f.name %>: 'test<% if (f.type === 'number') { %>0<% } %>',
+        <% }); %>
+      })
+      .expect(201);
+    expect(res.body).toHaveProperty('data');
+  });
+
+  test('should list <%= resource.name %>s', async () => {
+    const res = await request(app)
+      .get('/api/<%= resource.kebabName %>')
+      .expect(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+});

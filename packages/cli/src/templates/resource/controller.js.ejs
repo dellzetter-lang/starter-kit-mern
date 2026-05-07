@@ -1,0 +1,95 @@
+const service = require('./<%= resource.name %>.service');
+const ApiResponse = require('../../utils/ApiResponse');
+const ApiError = require('../../utils/ApiError');
+
+// ── Create ───────────────────────────────────────────────────────────────────
+const create = async (req, res, next) => {
+  try {
+    <% if (resource.features.auditLog) { %>
+    // Audit: track who created
+    req.body.createdBy = req.user?._id;
+    <% } %>
+
+    const result = await service.create<%= resource.pascalName %>(req.body);
+    return res.status(201).json(new ApiResponse(201, '<%= resource.pascalName %> created', { data: result }).body);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ── List (with pagination, filtering, sorting) ─────────────────────────────
+const list = async (req, res, next) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 20, 
+      sort = 'createdAt', 
+      order = 'desc',
+      // Extract filter params for all fields
+      <% resource.fields.forEach(f => { %>
+      <%= f.name %>,
+      <% }); %>
+    } = req.query;
+
+    const filters = {
+      <% resource.fields.forEach(f => { %>
+      <%= f.name %>: <%= f.name %>,
+      <% }); %>
+    };
+
+    const result = await service.getAll<%= resource.pascalName %>s({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort,
+      order,
+      filters,
+      // populate relations?
+      populate: req.query.populate ? req.query.populate.split(',') : [],
+    });
+
+    return res.status(200).json(new ApiResponse(200, 'Fetched', { 
+      data: result, 
+      page: parseInt(page), 
+      limit: parseInt(limit),
+      total: result.total || result.length 
+    }).body);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ── Get One ─────────────────────────────────────────────────────────────────
+const getOne = async (req, res, next) => {
+  try {
+    const result = await service.get<%= resource.pascalName %>ById(req.params.id);
+    return res.status(200).json(new ApiResponse(200, 'Fetched', { data: result }).body);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ── Update ──────────────────────────────────────────────────────────────────
+const update = async (req, res, next) => {
+  try {
+    <% if (resource.features.auditLog) { %>
+    req.body.updatedBy = req.user?._id;
+    <% } %>
+
+    const result = await service.update<%= resource.pascalName %>(req.params.id, req.body);
+    return res.status(200).json(new ApiResponse(200, 'Updated', { data: result }).body);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ── Delete ──────────────────────────────────────────────────────────────────
+const remove = async (req, res, next) => {
+  try {
+    const result = await service.delete<%= resource.pascalName %>(req.params.id);
+    return res.status(200).json(new ApiResponse(200, 'Deleted').body);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = { create, list, getOne, update, remove };

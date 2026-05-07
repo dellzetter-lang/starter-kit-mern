@@ -4,6 +4,36 @@ import path from 'path';
 import fs from 'fs-extra';
 import chalk from 'chalk';
 import ora from 'ora';
+import inquirer from "inquirer";
+
+/**
+ * Detect frontend/backend directory names in project root
+ */
+export async function getConfigPaths(projectRoot) {
+  const frontendCandidates = ['frontend', 'client', 'web', 'src'];
+  const backendCandidates = ['backend', 'api', 'server', 'be'];
+  
+  let frontendDir = 'frontend';
+  let backendDir = 'backend';
+  
+  for (const candidate of frontendCandidates) {
+    if (fs.existsSync(path.join(projectRoot, candidate, 'src', 'App.jsx')) ||
+        fs.existsSync(path.join(projectRoot, candidate, 'App.jsx'))) {
+      frontendDir = candidate;
+      break;
+    }
+  }
+  
+  for (const candidate of backendCandidates) {
+    if (fs.existsSync(path.join(projectRoot, candidate, 'src', 'modules')) ||
+        fs.existsSync(path.join(projectRoot, candidate, 'src', 'server.js'))) {
+      backendDir = candidate;
+      break;
+    }
+  }
+  
+  return { frontendDir, backendDir };
+}
 
 export default async function generatePageCmd(name, options) {
   const spinner = ora();
@@ -14,8 +44,9 @@ export default async function generatePageCmd(name, options) {
     process.exit(1);
   }
 
-  const pageName = name.charAt(0).toUpperCase() + name.slice(1);
-  const pageDir = path.join(projectRoot, 'frontend/src/pages', name);
+  const isDashboard = name.toLowerCase() === "dashboard";
+  const pageName = isDashboard ? "Dashboard" : (name.charAt(0).toUpperCase() + name.slice(1));
+  const pageDir = path.join(projectRoot, 'frontend/src/pages', isDashboard ? "dashboard" : name);
   const pageFile = path.join(pageDir, `${pageName}Page.jsx`);
 
   if (fs.existsSync(pageFile)) {
@@ -28,118 +59,817 @@ export default async function generatePageCmd(name, options) {
   }
 
   await fs.ensureDir(pageDir);
-  const pageTpl = `import { useAuth } from "@/hooks/useAuth";
+
+  let formFields = [];
+  if (options.withForm) {
+    if (options.formFields) {
+      formFields = parseFormFields(options.formFields);
+    } else if (options.interactive) {
+      formFields = await askFormFields();
+    } else {
+      formFields = [{ name: "name", type: "text", label: "Name", required: true }];
+    }
+  }
+
+  let pageContent;
+  if (isDashboard) {
+    pageContent = generateDashboardPage(pageName);
+  } else {
+    pageContent = generatePageComponent(pageName, name, formFields);
+
+    if (formFields.length > 0) {
+      const formDir = path.join(pageDir, "components");
+      await fs.ensureDir(formDir);
+      const formFile = path.join(formDir, `${pageName}Form.jsx`);
+      const formContent = generateFormComponent(pageName, formFields);
+      await fs.writeFile(formFile, formContent);
+      spinner.succeed(`Created form component: ${formFile}`);
+    }
+  }
+
+  await fs.writeFile(pageFile, pageContent);
+  spinner.succeed(`Created page: ${pageFile}`);
+
+  const routerPath = path.join(projectRoot, 'frontend/src/routes/AppRouter.jsx');
+  if (fs.existsSync(routerPath)) {
+    await updateRouter(routerPath, pageName, isDashboard ? "dashboard" : name, options.route, spinner);
+  } else {
+    console.log(chalk.yellow("⚠  AppRouter.jsx not found — add route manually."));
+  }
+
+  if (!options.noNav) {
+    await updateNavigation(path.join(projectRoot, 'frontend/src/config/app-preset.js'), pageName, options.route || `/${isDashboard ? "dashboard" : name}`, options.icon, spinner);
+  }
+}
+
+/**
+ * Parse page form field specification
+ * Format: "name:type:rule1|rule2;name2:type2:ruleA|ruleB"
+ */
+export function parseFormFields(str) {
+  if (!str || typeof str !== "string") return [];
+  
+  return str.split(";").map(fieldPart => {
+    const parts = fieldPart.split(":");
+    const name = parts[0]?.trim();
+    const type = (parts[1] || "text").trim();
+    const rulesPart = parts[2]?.trim() || "";
+    
+    if (!name) return null;
+    
+    const field = { name, type, label: name.charAt(0).toUpperCase() + name.slice(1) };
+    
+    if (rulesPart) {
+      const rules = rulesPart.split("|");
+      rules.forEach(rule => {
+        const [key, value] = rule.split("=").map(s => s.trim());
+        if (!value && key === "required") {
+          field.required = true;
+        } else if (!value && key === "unique") {
+          field.unique = true;
+        } else if (value) {
+          const num = parseFloat(value);
+          field[key] = isNaN(num) ? value : num;
+        }
+      });
+      if (field.default !== undefined) {
+        field.defaultValue = field.default;
+      }
+    }
+    
+    return field;
+  }).filter(Boolean);
+}
+
+export async function askFormFields() {
+  const { continueAdding } = await inquirer.prompt([
+    { type: "confirm", name: "continueAdding", message: "Add form fields?", default: true },
+  ]);
+  
+  const fields = [];
+  while (continueAdding) {
+    const answers = await inquirer.prompt([
+      { 
+        type: "input", 
+        name: "name", 
+        message: "Field name:",
+        validate: (v) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(v) || "Valid JS identifier required" 
+      },
+      { 
+        type: "list", 
+        name: "type", 
+        message: "Field type:",
+        choices: [
+          { name: "Text (single line)", value: "text" },
+          { name: "Email", value: "email" },
+          { name: "Password", value: "password" },
+          { name: "Number", value: "number" },
+          { name: "Phone", value: "tel" },
+          { name: "URL", value: "url" },
+          { name: "Date", value: "date" },
+          { name: "DateTime", value: "datetime-local" },
+          { name: "Time", value: "time" },
+          { name: "Textarea", value: "textarea" },
+          { name: "Color", value: "color" },
+          { name: "Range", value: "range" },
+          { name: "File", value: "file" },
+          { name: "Hidden", value: "hidden" },
+        ],
+      },
+      { 
+        type: "input", 
+        name: "label", 
+        message: "Label (optional):",
+        default: (prev) => prev.name.charAt(0).toUpperCase() + prev.name.slice(1) 
+      },
+      {
+        type: "checkbox",
+        name: "validation",
+        message: "Validation rules:",
+        choices: [
+          { name: "Required", value: "required", checked: true },
+          { name: "Unique", value: "unique", checked: false },
+        ]
+      },
+      {
+        type: "input",
+        name: "minLength",
+        message: "Min length (optional):",
+        validate: (v) => !v || /^\d+$/.test(v) || "Enter a number or leave empty"
+      },
+      {
+        type: "input",
+        name: "maxLength",
+        message: "Max length (optional):",
+        validate: (v) => !v || /^\d+$/.test(v) || "Enter a number or leave empty"
+      },
+      {
+        type: "input",
+        name: "minValue",
+        message: "Min value (for numbers/dates):",
+        validate: (v) => !v || !isNaN(v) || "Enter a number/date or leave empty"
+      },
+      {
+        type: "input",
+        name: "maxValue",
+        message: "Max value (for numbers/dates):",
+        validate: (v) => !v || !isNaN(v) || "Enter a number/date or leave empty"
+      },
+      {
+        type: "input",
+        name: "pattern",
+        message: "Regex pattern (e.g., /^[A-Z]+$/):",
+        validate: (v) => !v || v.startsWith("/") || "Enter regex like /^[A-Z]+$/ or leave empty"
+      },
+      {
+        type: "input",
+        name: "placeholder",
+        message: "Placeholder text (optional):"
+      },
+      {
+        type: "input",
+        name: "helperText",
+        message: "Helper/instructions text (optional):"
+      },
+    ]);
+    
+    const field = {
+      name: answers.name,
+      type: answers.type,
+      label: answers.label,
+      required: answers.validation.includes("required"),
+      unique: answers.validation.includes("unique"),
+      placeholder: answers.placeholder,
+      helperText: answers.helperText,
+    };
+    
+    if (answers.minLength) field.minLength = parseInt(answers.minLength);
+    if (answers.maxLength) field.maxLength = parseInt(answers.maxLength);
+    if (answers.minValue !== undefined && answers.minValue !== "") field.min = parseFloat(answers.minValue);
+    if (answers.maxValue !== undefined && answers.maxValue !== "") field.max = parseFloat(answers.maxValue);
+    if (answers.pattern) field.pattern = answers.pattern;
+    
+    if (field.type === "range") {
+      field.min = field.min ?? 0;
+      field.max = field.max ?? 100;
+      field.step = field.step ?? 1;
+    }
+    
+    fields.push(field);
+    const { more } = await inquirer.prompt([{ type: "confirm", name: "more", message: "Add another field?", default: false }]);
+    if (!more) break;
+  }
+  return fields;
+}
+
+function generatePageComponent(pageName, routeName, formFields) {
+  const imports = formFields.length ? `import { ${pageName}Form } from "./components/${pageName}Form";\n` : "";
+  const formElement = formFields.length ? `<${pageName}Form />` : "/* Form goes here */";
+  
+  return `import { useAuth } from "@/hooks/useAuth";
 import { ROUTES } from "@/utils/constants";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-export default function ${pageName}Page() {
+${imports}export default function ${pageName}Page() {
   const { user } = useAuth();
 
   return (
-     <PageWrapper className="space-y-6">
+    <PageWrapper className="space-y-6">
       <section>
-        <h1 className="text-3xl font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome, {user?.name}. {preset.brand.tagline}.</p>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
       </section>
-      </PageWrapper>
+
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">Create New</h2>
+        ${formElement}
+      </section>
+    </PageWrapper>
   );
 }
 `;
-  await fs.writeFile(pageFile, pageTpl);
-  spinner.succeed(`Created page: ${pageFile}`);
+}
 
-  // Add lazy import for the page component at the top of AppRouter.jsx
-  const routerPath = path.join(projectRoot, 'frontend/src/routes/AppRouter.jsx');
-  if (fs.existsSync(routerPath)) {
-    let routerCode = await fs.readFile(routerPath, 'utf-8');
-    const importLine = `const ${pageName}Page = lazy(() => import("@/pages/${name}/${pageName}Page"));`;
+export function generateDashboardPage(pageName, modules = []) {
+  const hasModules = modules.length > 0;
+  const moduleRefs = modules.map(m => m.name).join(', ');
+  const fetchStatsPromises = modules.map(m => `api.get("/api/${m.name}").then(r => r.data?.data?.length || 0)`).join(', ');
+  
+  return `import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { api } from "@/api/axiosInstance";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { ResponsiveContainer, LineChart, BarChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { Link } from "react-router-dom";
+import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-    if (routerCode.includes(importLine)) {
-      console.log(chalk.gray('ℹ  Import already exists'));
-    } else {
-      const pageImportRegex = /^const \w+Page = lazy\(.*?\);/gm;
-      let lastMatch, match;
-      while ((match = pageImportRegex.exec(routerCode)) !== null) {
-        lastMatch = match;
-      }
-      if (lastMatch) {
-        routerCode = routerCode.replace(
-          lastMatch[0],
-          `${lastMatch[0]}\n${importLine}`
-        );
-      } else {
-        routerCode = routerCode.replace(
-          'export function AppRouter()',
-          `${importLine}\nexport function AppRouter()`
-        );
-      }
-      await fs.writeFile(routerPath, routerCode);
-      spinner.succeed('Added lazy import to AppRouter.jsx');
-      // Reload for route insertion below
-      routerCode = await fs.readFile(routerPath, 'utf-8');
+const fetchStats = async () => {
+  const promises = [${fetchStatsPromises || 'Promise.resolve(0)'}];
+  const results = await Promise.all(promises);
+  return { ${modules.map((m, i) => `${m.name}: results[${i}]`).join(', ')} };
+};
+
+const fetchActivity = async ({ queryKey }) => {
+  const [_key, page] = queryKey;
+  const responses = await Promise.all([
+    ${modules.slice(0, 3).map(m => `api.get("/api/${m.name}?limit=5&skip=" + page * 5)`).join(',\n    ')}
+  ]);
+  return responses.flatMap((r, i) => 
+    (r.data?.data || []).map(item => ({ ...item, module: "${modules[0]?.name || 'item'}" }))
+  ).slice(0, 10);
+};
+
+export default function ${pageName}Page() {
+  const [activityPage, setActivityPage] = useState(0);
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["dashboard-stats"],
+    queryFn: fetchStats,
+    refetchInterval: 30000,
+  });
+
+  const { data: activity, isLoading: activityLoading } = useQuery({
+    queryKey: ["dashboard-activity", activityPage],
+    queryFn: fetchActivity,
+  });
+
+  const chartData = [
+    { name: "Mon", value: stats?.${modules[0]?.name || 'users'} || 0 },
+    { name: "Tue", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 0.8) : 0 },
+    { name: "Wed", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 1.2) : 0 },
+    { name: "Thu", value: stats?.${modules[0]?.name || 'users'} || 0 },
+    { name: "Fri", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 1.1) : 0 },
+    { name: "Sat", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 0.9) : 0 },
+    { name: "Sun", value: stats?.${modules[0]?.name || 'users'} || 0 },
+  ];
+
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Overview of your application metrics.</p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        ${hasModules ? modules.map(m => `
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">${m.name.charAt(0).toUpperCase() + m.name.slice(1)}</CardTitle>
+            <span className="text-2xl">📊</span>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{statsLoading ? "..." : stats?.${m.name} ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Total records</p>
+          </CardContent>
+        </Card>`).join('\n') : `
+        <Card>
+          <CardHeader>
+            <CardTitle>Welcome</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>No modules detected. Generate modules to see stats.</p>
+            <Button asChild className="mt-2">
+              <Link to="/modules">View Modules</Link>
+            </Button>
+          </CardContent>
+        </Card>`}
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity Trend</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="hsl(var(--primary))" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activityLoading ? (
+              <p className="text-muted-foreground">Loading...</p>
+            ) : (
+              <>
+                <div className="rounded-md border">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="p-2 text-left">Module</th>
+                        <th className="p-2 text-left">Action</th>
+                        <th className="p-2 text-left">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activity?.slice(0, 10).map((item, i) => (
+                        <tr key={i} className="border-b">
+                          <td className="p-2">{item.module}</td>
+                          <td className="p-2">Updated</td>
+                          <td className="p-2">{new Date().toLocaleDateString()}</td>
+                        </tr>
+                      )) || <tr><td className="p-2" colSpan={3}>No recent activity</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-end gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActivityPage(p => Math.max(0, p - 1))}
+                    disabled={activityPage === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm">Page {activityPage + 1}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActivityPage(p => p + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+    </PageWrapper>
+  );
+}
+`;
+}
+
+function generateFormComponent(pageName, fields) {
+  const fieldInputs = fields.map((field) => {
+    const id = field.name.toLowerCase();
+    const label = field.label || field.name.charAt(0).toUpperCase() + field.name.slice(1);
+    const required = field.required ? "required" : "";
+    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : "";
+    const helperText = field.helperText ? `<p className="text-xs text-muted-foreground mt-1">${field.helperText}</p>` : "";
+    
+    let validationAttrs = "";
+    if (field.type === "number" || field.type === "range") {
+      if (field.min !== undefined) validationAttrs += ` min="${field.min}"`;
+      if (field.max !== undefined) validationAttrs += ` max="${field.max}"`;
+      if (field.step) validationAttrs += ` step="${field.step}"`;
     }
-
-    // Add route to AppRouter.jsx (place BEFORE wildcard "404" route so it remains last)
-    const routePath = options.route || `/${name}`;
-    // Build insertion block with proper indentation
-    const routeBlock = `${pageName}Page`;
-    const routeInsert = `\n      {/* ${pageName} */}
-      <Route
-        path="${routePath}"
-        element={<AppShell secure><${routeBlock} /></AppShell>}
-      />`;
-
-    if (routerCode.includes(`path="${routePath}"`)) {
-      console.log(chalk.gray('ℹ  Route already exists'));
-    } else {
-      // Try to insert right before the wildcard (NotFound) route to keep it last
-      const wildcardRegex = /^(\s*)<Route\s+path="\*"\s+element=.*?\/>/m;
-      const wildcardMatch = routerCode.match(wildcardRegex);
-      if (wildcardMatch) {
-        const indent = wildcardMatch[1];
-        // Build block with same indent as other routes
-        const indentedInsert = `\n${indent}  {/* ${pageName} */}
-${indent}  <Route
-${indent}    path="${routePath}"
-${indent}    element={<AppShell secure><${routeBlock} /></AppShell>}
-${indent}  />`;
-        routerCode = routerCode.replace(wildcardRegex, indentedInsert + '\n' + wildcardMatch[0]);
-      } else {
-        // No wildcard found — insert before </Routes>
-        routerCode = routerCode.replace('</Routes>', `${routeInsert}\n      </Routes>`);
-      }
-      await fs.writeFile(routerPath, routerCode);
-      spinner.succeed('Added route to AppRouter.jsx');
+    if (field.type === "text" || field.type === "string") {
+      if (field.minLength !== undefined) validationAttrs += ` minLength="${field.minLength}"`;
+      if (field.maxLength !== undefined) validationAttrs += ` maxLength="${field.maxLength}"`;
     }
-  } else {
-    console.log(chalk.yellow('⚠  AppRouter.jsx not found — add route manually.'));
+    
+    let inputElement;
+    switch (field.type) {
+      case "textarea":
+        inputElement = `<textarea
+          id="${id}"
+          name="${id}"
+          rows={3}
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${placeholder}
+          ${validationAttrs}
+        />`;
+        break;
+        
+      case "select":
+        inputElement = `<select
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+        >
+          <option value="">Select...</option>
+          {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
+        </select>`;
+        break;
+        
+      case "color":
+        inputElement = `<div className="flex items-center gap-2">
+          <input
+            type="color"
+            id="${id}"
+            name="${id}"
+            className="h-10 w-20 rounded-md border cursor-pointer"
+          />
+          <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
+        </div>`;
+        break;
+        
+      case "file":
+        inputElement = `<input
+          type="file"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+          accept="${field.accept || "*/*"}"
+          ${field.multiple ? "multiple" : ""}
+        />`;
+        break;
+        
+      case "range":
+        inputElement = `<div className="space-y-2">
+          <div className="flex justify-between text-xs">
+            <span>${field.min || 0}</span>
+            <span id="${id}-display" className="font-medium">${field.defaultValue || Math.round((field.min || 0) + (field.max || 100) / 2)}</span>
+            <span>${field.max || 100}</span>
+          </div>
+          <input
+            type="range"
+            id="${id}"
+            name="${id}"
+            min="${field.min || 0}"
+            max="${field.max || 100}"
+            step="${field.step || 1}"
+            className="w-full accent-primary"
+            onChange={(e) => document.getElementById('${id}-display').textContent = e.target.value}
+          />
+        </div>`;
+        break;
+        
+      case "hidden":
+        inputElement = `<input type="hidden" id="${id}" name="${id}" value="${field.defaultValue || ''}" />`;
+        break;
+        
+      case "date":
+        inputElement = `<input
+          type="date"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${field.min ? `min="${field.min}"` : ''}
+          ${field.max ? `max="${field.max}"` : ''}
+        />`;
+        break;
+        
+      case "time":
+        inputElement = `<input
+          type="time"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+        />`;
+        break;
+        
+      case "datetime-local":
+        inputElement = `<input
+          type="datetime-local"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${field.min ? `min="${field.min}"` : ''}
+          ${field.max ? `max="${field.max}"` : ''}
+        />`;
+        break;
+        
+      case "tel":
+        inputElement = `<input
+          type="tel"
+          id="${id}"
+          name="${id}"
+          inputMode="tel"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${placeholder}
+          pattern="^[+]?[1-9]\\d{1,14}$"
+          title="E.164 format: +[country code][number]"
+        />`;
+        break;
+        
+      case "url":
+        inputElement = `<input
+          type="url"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${placeholder}
+        />`;
+        break;
+        
+      case "email":
+        inputElement = `<input
+          type="email"
+          id="${id}"
+          name="${id}"
+          inputMode="email"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${placeholder}
+          autoComplete="email"
+        />`;
+        break;
+        
+      case "password":
+        inputElement = `<input
+          type="password"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          minLength="8"
+          autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
+        />`;
+        break;
+        
+      default:
+        inputElement = `<input
+          type="text"
+          id="${id}"
+          name="${id}"
+          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          ${required}
+          ${placeholder}
+          ${validationAttrs}
+        />`;
+    }
+    
+    return `      <div key="${id}" className="space-y-2">
+        <label htmlFor="${id}" className="block text-sm font-medium">
+          ${label}${field.required ? '<span className="text-destructive ml-1">*</span>' : ''}
+        </label>
+        ${inputElement}
+        ${helperText}
+      </div>`;
+  }).join("\n\n");
+  
+  const formFieldsObject = fields.map((f) => {
+    let defaultValue = '""';
+    switch (f.type) {
+      case "hidden": defaultValue = f.defaultValue !== undefined ? JSON.stringify(f.defaultValue) : '""'; break;
+      case "number":
+      case "range": defaultValue = f.defaultValue ?? 0; break;
+      case "boolean": defaultValue = f.defaultValue ?? false; break;
+      case "date":
+      case "datetime-local": defaultValue = f.defaultValue ?? '""'; break;
+      case "text":
+      case "string":
+      case "email":
+      case "tel":
+      case "url":
+      case "password":
+      case "textarea": defaultValue = f.defaultValue !== undefined ? JSON.stringify(f.defaultValue) : '""'; break;
+    }
+    return `      ${f.name}: ${defaultValue}`;
+  }).join(",\n");
+  
+  const sanitizationImports = fields.some(f => ["email", "url", "tel", "text", "string"].includes(f.type))
+    ? `import { sanitizeEmail, sanitizeUrl, sanitizePhone, sanitizeText } from "@/utils/sanitize";\n`
+    : '';
+  
+  return `import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { api } from "@/api/axiosInstance";
+${sanitizationImports}
+
+export function ${pageName}Form() {
+  const [loading, setLoading] = useState(false);
+  const [values, setValues] = useState({
+${formFieldsObject}
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setValues((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const sanitizeInput = (key, value) => {
+    switch (key) {
+      ${fields.filter(f => ["email", "url", "tel", "text"].includes(f.type)).map(f => 
+        `case "${f.name}": return sanitize${f.type.charAt(0).toUpperCase() + f.type.slice(1)}(value);`
+      ).join('\n      ')}
+      default: return value;
+    }
+  };
+
+  const validateForm = () => {
+    const errors = [];
+    
+    ${fields.filter(f => f.required).map(f => 
+      `if (!values.${f.name}) errors.push("${f.label} is required");`
+    ).join('\n    ')}
+    
+    ${fields.filter(f => f.type === "number" || f.type === "range").map(f => 
+      `${f.min !== undefined ? `if (values.${f.name} < ${f.min}) errors.push("${f.label} must be ≥ ${f.min}");` : ''}
+    ${f.max !== undefined ? `if (values.${f.name} > ${f.max}) errors.push("${f.label} must be ≤ ${f.max}");` : ''}`
+    ).join('\n    ')}
+    
+    ${fields.filter(f => (f.minLength || f.maxLength) && ["text", "textarea", "string", "email", "tel", "url", "password"].includes(f.type)).map(f => 
+      `${f.minLength ? `if (values.${f.name}.length < ${f.minLength}) errors.push("Min ${f.minLength} characters");` : ''}
+    ${f.maxLength ? `if (values.${f.name}.length > ${f.maxLength}) errors.push("Max ${f.maxLength} characters");` : ''}`
+    ).join('\n    ')}
+    
+    ${fields.filter(f => f.pattern).map(f => 
+      `if (!${f.pattern}.test(values.${f.name})) errors.push("${f.label} has invalid format");`
+    ).join('\n    ')}
+    
+    ${fields.filter(f => f.type === "email").map(f => 
+      `if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.${f.name})) errors.push("Invalid email");`
+    ).join('\n    ')}
+    ${fields.filter(f => f.type === "url").map(f => 
+      `if (!/^https?:\\/\\//.test(values.${f.name})) errors.push("URL must start with http:// or https://");`
+    ).join('\n    ')}
+    ${fields.filter(f => f.type === "tel").map(f => 
+      `if (!/^[+]?[1-9]\\d{1,14}$/.test(values.${f.name})) errors.push("Invalid phone (E.164: +1234567890)");`
+    ).join('\n    ')}
+    
+    return errors;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const errors = validateForm();
+      if (errors.length > 0) {
+        errors.forEach(err => toast.error(err));
+        setLoading(false);
+        return;
+      }
+      
+      const sanitizedData = Object.fromEntries(
+        Object.entries(values).map(([k, v]) => [k, sanitizeInput(k, v)])
+      );
+      
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      const config = { 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(csrfToken && { 'X-CSRF-Token': csrfToken })
+        } 
+      };
+      
+      const response = await api.post("/${pageName.toLowerCase()}", sanitizedData, config);
+      toast.success("Item created successfully!");
+      setValues({${fields.map(f => {
+        if (["number","range","boolean"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${f.defaultValue}`;
+        if (["text","string","email","tel","url","password","textarea"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${JSON.stringify(f.defaultValue)}`;
+        if (["date","datetime-local"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${JSON.stringify(f.defaultValue)}`;
+        return `${f.name}: ${f.type === "boolean" ? false : f.type === "number" || f.type === "range" ? 0 : '""'}`;
+      }).join(", ")}});
+    } catch (err) {
+      const errorMsg = err?.response?.data?.message || err?.message || "Failed to create";
+      toast.error(errorMsg);
+      if (process.env.NODE_ENV === 'development') console.error("Form error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+${fieldInputs}
+      ${fields.filter(f => f.type === "hidden").map(f => `      <input type="hidden" name="${f.name}" value="${f.defaultValue || ''}" />`).join('\n')}
+      <div className="pt-2">
+        <Button type="submit" disabled={loading}>
+          {loading ? "Creating..." : "Create ${pageName}"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+`;
+}
+
+async function updateRouter(routerPath, pageName, name, customRoute, spinner) {
+  let routerCode = await fs.readFile(routerPath, "utf-8");
+  const importLine = `const ${pageName}Page = lazy(() => import("@/pages/${name.toLowerCase()}/${pageName}Page"));`;
+
+  if (!routerCode.includes(importLine)) {
+    const pageImportRegex = /^const \w+Page = lazy\(.*?\);/gm;
+    let lastMatch, match;
+    while ((match = pageImportRegex.exec(routerCode)) !== null) lastMatch = match;
+    if (lastMatch) {
+      routerCode = routerCode.replace(lastMatch[0], `${lastMatch[0]}\n${importLine}`);
+    } else {
+      routerCode = routerCode.replace("export function AppRouter()", `${importLine}\nexport function AppRouter()`);
+    }
+    await fs.writeFile(routerPath, routerCode);
+    spinner.succeed("Added lazy import to AppRouter.jsx");
+    routerCode = await fs.readFile(routerPath, "utf-8");
   }
 
-  // Add nav entry unless --no-nav
-  if (!options.noNav) {
-    const presetPath = path.join(projectRoot, 'frontend/src/config/app-preset.js');
-    if (fs.existsSync(presetPath)) {
-      let presetCode = await fs.readFile(presetPath, 'utf-8');
-      const routePath = options.route || `/${name}`;
-      const navEntry = `{ label: "${pageName}", href: "${routePath}", icon: "${options.icon || 'layout'}" },`;
+  const routePath = customRoute || `/${name}`;
+  const routeBlock = `${pageName}Page`;
+  const indentedInsert = `\n      {/* ${pageName} */}
+        <Route
+          path="${routePath}"
+          element={<AppShell secure><${routeBlock} /></AppShell>}
+        />`;
 
-      if (presetCode.includes(`href: "${routePath}"`)) {
-        console.log(chalk.gray('ℹ  Navigation entry already present'));
-      } else {
-        const navMatch = presetCode.match(/navigation:\s*\[([\s\S]*?)\]/);
-        if (!navMatch) {
-          console.log(chalk.yellow('⚠  Could not find navigation array — skipping'));
-        } else {
-          let existingItems = navMatch[1].trim();
-          const cleaned = existingItems.replace(/,\s*$/, '');
-          const newItems = cleaned ? `${cleaned},\n      ${navEntry}` : navEntry;
-          const replacement = `navigation: [\n      ${newItems}\n    ]`;
-          presetCode = presetCode.replace(/navigation:\s*\[[\s\S]*?\]/, replacement);
-          await fs.writeFile(presetPath, presetCode);
-          spinner.succeed('Added navigation entry to app-preset.js');
-        }
-      }
+  if (routerCode.includes(`path="\${routePath}"`)) {
+    console.log(chalk.gray("ℹ  Route already exists"));
+  } else {
+    const wildcardRegex = /^(\s*)<Route\s+path="\*"\s+element=.*?\/>/m;
+    const wildcardMatch = routerCode.match(wildcardRegex);
+    if (wildcardMatch) {
+      routerCode = routerCode.replace(wildcardRegex, indentedInsert + "\n" + wildcardMatch[0]);
     } else {
-      console.log(chalk.yellow('⚠  app-preset.js not found — add nav manually.'));
+      routerCode = routerCode.replace("</Routes>", `${indentedInsert}\n      </Routes>`);
+    }
+    await fs.writeFile(routerPath, routerCode);
+    spinner.succeed("Added route to AppRouter.jsx");
+  }
+}
+
+async function updateNavigation(presetPath, pageName, routePath, icon, spinner) {
+  if (!fs.existsSync(presetPath)) {
+    console.log(chalk.yellow("⚠  app-preset.js not found — add nav manually."));
+    return;
+  }
+  let presetCode = await fs.readFile(presetPath, "utf-8");
+  const navEntry = `{ label: "${pageName}", href: "${routePath}", icon: "${icon || "layout"}" },`;
+
+  if (presetCode.includes(`href: "\${routePath}"`)) {
+    console.log(chalk.gray("ℹ  Navigation entry already present"));
+  } else {
+    const navMatch = presetCode.match(/navigation:\s*\[([\s\S]*?)\]/);
+    if (!navMatch) {
+      console.log(chalk.yellow("⚠  Could not find navigation array — skipping"));
+    } else {
+      let existingItems = navMatch[1].trim();
+      const cleaned = existingItems.replace(/,?\s*\\$\{newItems\}/, "").replace(/,\s*\$/, "");
+      const newItems = cleaned ? `${cleaned},\n      ${navEntry}` : navEntry;
+      const replacement = `navigation: [\n      ${newItems}\n    ]`;
+      presetCode = presetCode.replace(/navigation:\s*\[([\s\S]*?)\]/, replacement);
+      await fs.writeFile(presetPath, presetCode, "utf-8");
+      spinner.succeed("Added navigation entry to app-preset.js");
     }
   }
 }
