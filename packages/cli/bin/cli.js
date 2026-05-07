@@ -46,6 +46,10 @@ generateCmd
   .command('module <name>')
   .description('Generate backend module (model, service, controller, routes, validator)')
   .option('--force', 'Overwrite existing files')
+  .option('--fields <spec>', 'Field specification')
+  .option('--interactive', 'Prompt for fields interactively')
+  .option('--architecture <level>', 'Architecture: lightweight|moderate|advanced', 'moderate')
+  .option('--with-page', 'Generate corresponding frontend page')
   .action(generateModule);
 
 generateCmd
@@ -55,6 +59,9 @@ generateCmd
   .option('--no-nav', 'Do not add to navigation')
   .option('--icon <name>', 'Icon name from lucide-react')
   .option('--force', 'Overwrite existing files')
+  .option('--with-form', 'Generate form component')
+  .option('--form-fields <spec>', 'Form field specification')
+  .option('--interactive', 'Prompt for form fields interactively')
   .action(generatePage);
 
 generateCmd

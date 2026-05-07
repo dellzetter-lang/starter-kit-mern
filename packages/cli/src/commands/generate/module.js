@@ -339,8 +339,10 @@ async function generateModuleFiles(projectRoot, moduleName, archLevel, fields, {
   const pascalName = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
 
   if (archLevel === "lightweight") {
-    const { model, routes } = generateLightweight(moduleName, pascalName, fields);
+    const { model, controller, middleware, routes } = generateLightweight(moduleName, pascalName, fields);
     await fs.writeFile(path.join(modDir, `${moduleName}.model.js`), model);
+    await fs.writeFile(path.join(modDir, `${moduleName}.controller.js`), controller);
+    await fs.writeFile(path.join(modDir, `${moduleName}.middleware.js`), middleware);
     await fs.writeFile(path.join(modDir, `${moduleName}.routes.js`), routes);
   } else {
     const { model, service, controller, routes, validator } = generateStandardModule(moduleName, pascalName, archLevel === "advanced", fields);
@@ -405,91 +407,96 @@ const ${moduleName}Schema = new mongoose.Schema(
 module.exports = { ${moduleName}Model: mongoose.model("${pascalName}", ${moduleName}Schema) };
 `;
 
-  const routes = `const express = require("express");
-const { ${moduleName}Model } = require("./${moduleName}.model");
+  const middleware = `// ${pascalName} Middleware
+
+const ${pascalName}Middleware = {
+  validateId: async (req, res, next) => {
+    const { id } = req.params;
+    const Model = require("./${moduleName}.model").${pascalName}Model;
+    const doc = await Model.findById(id);
+    if (!doc) return res.status(404).json({ success: false, message: "${pascalName} not found" });
+    req.${moduleName}Doc = doc;
+    next();
+  },
+  sanitizeInput: (req, res, next) => {
+    ${fields.filter(f => ["email","tel","url","text","string"].includes(f.type)).map(f => `if (req.body.${f.name}) req.body.${f.name} = req.body.${f.name}${f.type === "email" ? ".toLowerCase().trim()" : ".trim()"};`).join('\n    ')}
+    next();
+  }
+};
+module.exports = ${pascalName}Middleware;
+`;
+
+  const sanitizationCode = fields.filter(f => ["email","tel","url","text","string"].includes(f.type))
+    .map(f => `if (payload.${f.name}) payload.${f.name} = payload.${f.name}${f.type === "email" ? ".toLowerCase().trim()" : ".trim()"};`).join('\n  ');
+
+  const controller = `// ${pascalName} Controller
+const ${pascalName}Model = require("./${moduleName}.model").${pascalName}Model;
 const ApiResponse = require("../../utils/ApiResponse");
 const ApiError = require("../../utils/ApiError");
-const authenticate = require("../../middlewares/auth.middleware").authenticate;
-const requireRole = require("../../middlewares/auth.middleware").requireRole;
 
-const router = express.Router();
-
-// POST — create
-router.post("/", authenticate, async (req, res, next) => {
+const create${pascalName} = async (req, res, next) => {
   try {
-    // Sanitize
-    if (req.body.${fields.find(f => ["email","tel","url","text"].includes(f.type))?.name}) {
-      req.body = sanitize${pascalName}Input(req.body);
-    }
-    
-    const doc = await ${moduleName}Model.create(req.body);
+    ${sanitizationCode}
+    const doc = await ${pascalName}Model.create(req.body);
     return res.status(201).json(new ApiResponse(201, "${pascalName} created", { data: doc }).body);
-  } catch (err) {
-    return next(err);
-  }
-});
+  } catch (err) { return next(err); }
+};
 
-// GET — list with pagination
-router.get("/", authenticate, async (req, res, next) => {
+const getAll${pascalName}s = async (req, res, next) => {
   try {
     const { page = 1, limit = 50 } = req.query;
-    const skip = (page - 1) * limit;
-    const docs = await ${moduleName}Model.find({}).skip(skip).limit(parseInt(limit));
-    return res.status(200).json(new ApiResponse(200, "Fetched", { data: docs, page, total: await ${moduleName}Model.countDocuments() }).body);
-  } catch (err) {
-    return next(err);
-  }
-});
+    const docs = await ${pascalName}Model.find({}).skip((page - 1) * limit).limit(parseInt(limit));
+    const total = await ${pascalName}Model.countDocuments();
+    return res.status(200).json(new ApiResponse(200, "Fetched", { data: docs, page: parseInt(page), total }).body);
+  } catch (err) { return next(err); }
+};
 
-// GET — single
-router.get("/:id", authenticate, async (req, res, next) => {
+const get${pascalName}ById = async (req, res, next) => {
   try {
-    const doc = await ${moduleName}Model.findById(req.params.id);
+    const doc = await ${pascalName}Model.findById(req.params.id);
     if (!doc) throw new ApiError(404, "${pascalName} not found");
     return res.status(200).json(new ApiResponse(200, "Fetched", { data: doc }).body);
-  } catch (err) {
-    return next(err);
-  }
-});
+  } catch (err) { return next(err); }
+};
 
-// PUT — update
-router.put("/:id", authenticate, async (req, res, next) => {
+const update${pascalName} = async (req, res, next) => {
   try {
-    if (req.body.${fields.find(f => ["email","tel","url","text"].includes(f.type))?.name}) {
-      req.body = sanitize${pascalName}Input(req.body);
-    }
-    const doc = await ${moduleName}Model.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    ${sanitizationCode}
+    const doc = await ${pascalName}Model.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!doc) throw new ApiError(404, "${pascalName} not found");
     return res.status(200).json(new ApiResponse(200, "Updated", { data: doc }).body);
-  } catch (err) {
-    return next(err);
-  }
-});
+  } catch (err) { return next(err); }
+};
 
-// DELETE — hard delete (admin only)
-router.delete("/:id", authenticate, requireRole("admin"), async (req, res, next) => {
+const delete${pascalName} = async (req, res, next) => {
   try {
-    const doc = await ${moduleName}Model.findByIdAndDelete(req.params.id);
+    const doc = await ${pascalName}Model.findByIdAndDelete(req.params.id);
     if (!doc) throw new ApiError(404, "${pascalName} not found");
     return res.status(200).json(new ApiResponse(200, "Deleted").body);
-  } catch (err) {
-    return next(err);
-  }
-});
+  } catch (err) { return next(err); }
+};
 
-  // Helper sanitization
-  function sanitize${pascalName}Input(body) {
-    ${fields.filter(f => ["email","tel","url","text","string"].includes(f.type)).map(f => {
-      const method = f.type === "email" ? ".toLowerCase().trim()" : ".trim()";
-      return `  if (body.${f.name}) body.${f.name} = body.${f.name}${method}`;
-    }).join('\n')}
-    return body;
-  }
+module.exports = { create${pascalName}, getAll${pascalName}s, get${pascalName}ById, update${pascalName}, delete${pascalName} };
+`;
 
+  const routes = `// ${pascalName} Routes
+const express = require("express");
+const router = express.Router();
+const authenticate = require("../../middlewares/auth.middleware").authenticate;
+const requireRole = require("../../middlewares/auth.middleware").requireRole;
+const controller = require("./${moduleName}.controller");
+const middleware = require("./${moduleName}.middleware");
+
+router.use(middleware.sanitizeInput);
+router.post("/", authenticate, controller.create${pascalName});
+router.get("/", authenticate, controller.getAll${pascalName}s);
+router.get("/:id", authenticate, middleware.validateId, controller.get${pascalName}ById);
+router.put("/:id", authenticate, middleware.validateId, controller.update${pascalName});
+router.delete("/:id", authenticate, requireRole("admin"), middleware.validateId, controller.delete${pascalName});
 module.exports = router;
 `;
 
-  return { model, routes };
+  return { model, controller, middleware, routes };
 }
 
 function generateStandardModule(moduleName, pascalName, advanced, fields) {
