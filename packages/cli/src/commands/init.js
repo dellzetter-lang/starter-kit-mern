@@ -212,6 +212,17 @@ export default async function initCmd(projectName, options) {
         },
       },
       {
+        type: "list",
+        name: "architecture",
+        message: "Architecture level for generated modules:",
+        choices: [
+          { name: "Lightweight — inline controller, minimal files (controllers in routes)", value: "lightweight" },
+          { name: "Moderate — full layer separation (service/controller/routes)", value: "moderate" },
+          { name: "Advanced — with tests, domain logic, middleware", value: "advanced" },
+        ],
+        default: "moderate",
+      },
+      {
         type: "checkbox",
         name: "extraModules",
         message: "Select common backend modules to include (besides auth):",
@@ -300,6 +311,7 @@ export default async function initCmd(projectName, options) {
       answers.deployTargets = answers.deployTargets || [];
     }
     answers.installDeps = answers.installDeps !== false;
+    answers.architecture = answers.architecture || "moderate";
   }
 
   // Step 3: Download template
@@ -328,14 +340,14 @@ export default async function initCmd(projectName, options) {
   await applyPresetCustomization(path.join(outDir), answers);
   spinner.succeed("Configuration customized");
 
-  // Step 6: Generate extra backend modules
-  if (answers.extraModules?.length) {
-    spinner.start("Generating backend modules...");
-    for (const mod of answers.extraModules) {
-      await generateBackendModule(path.join(outDir), mod);
-    }
-    spinner.succeed(`Generated ${answers.extraModules.length} module(s)`);
-  }
+// Step 6: Generate extra backend modules
+   if (answers.extraModules?.length) {
+     spinner.start("Generating backend modules...");
+     for (const mod of answers.extraModules) {
+       await generateBackendModule(path.join(outDir), mod, answers.architecture);
+     }
+     spinner.succeed(`Generated ${answers.extraModules.length} module(s)`);
+   }
 
   // Step 7: Generate deployment configs
   if (answers.deployTargets?.length) {
@@ -485,25 +497,50 @@ async function applyPresetCustomization(projectRoot, answers) {
   await fs.writeFile(readmePath, readme, "utf-8");
 }
 
-async function generateBackendModule(projectRoot, moduleName) {
-  const modDir = path.join(projectRoot, "backend/src/modules", moduleName);
+async function generateBackendModule(projectRoot, moduleName, archLevel = "moderate") {
+   // Delegate to the generateModuleFiles function logic from module.js
+   const { frontendDir, backendDir } = { frontendDir: "frontend", backendDir: "backend" };
+   const fields = [{ 
+     name: "name", 
+     type: "string", 
+     validation: { required: true, minLength: 3, maxLength: 100 },
+     label: "Name"
+   }];
+   
+   const pascalName = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
+   const modDir = path.join(projectRoot, backendDir, "src/modules", moduleName);
+   await fs.ensureDir(modDir);
 
-  // Template strings for each file
-  const modelTpl = `const mongoose = require("mongoose");
-const { env } = require("../../config/env");
+   const schemaFields = fields.map(f => {
+     let def = `${f.name}: { type: `;
+     switch (f.type) {
+       case "number": def += "Number"; break;
+       case "boolean": def += "Boolean"; break;
+       case "date": def += "Date"; break;
+       default: def += "String";
+     }
+     const constraints = [];
+     if (f.validation?.required) constraints.push("required: true");
+     if (["string", "text", "email", "phone"].includes(f.type)) constraints.push("trim: true");
+     if (f.validation?.minLength) constraints.push(`minlength: ${f.validation.minLength}`);
+     if (f.validation?.maxLength) constraints.push(`maxlength: ${f.validation.maxLength}`);
+     if (constraints.length > 0) def += `, ${constraints.join(", ")}`;
+     return def + " }";
+   }).join(",\n    ");
+
+   const modelTpl = `const mongoose = require("mongoose");
 
 const ${moduleName}Schema = new mongoose.Schema(
   {
-    // TODO: Define fields
-    name: { type: String, required: true, trim: true },
+    ${schemaFields}
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("${moduleName.charAt(0).toUpperCase() + moduleName.slice(1)}", ${moduleName}Schema);
+module.exports = mongoose.model("${pascalName}", ${moduleName}Schema);
 `;
 
-  const serviceTpl = `const ${moduleName}Model = require("./${moduleName}.model");
+   const serviceTpl = `const ${moduleName}Model = require("./${moduleName}.model");
 const ApiError = require("../../utils/ApiError");
 
 const create${moduleName.charAt(0).toUpperCase() + moduleName.slice(1)} = async (payload) => {
