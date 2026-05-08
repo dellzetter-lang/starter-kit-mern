@@ -38,15 +38,16 @@ export async function getConfigPaths(projectRoot) {
 export default async function generatePageCmd(name, options) {
   const spinner = ora();
   const projectRoot = process.cwd();
+  const { frontendDir, backendDir } = await getConfigPaths(projectRoot);
 
-  if (!fs.existsSync(path.join(projectRoot, 'frontend/src/App.jsx'))) {
+  if (!fs.existsSync(path.join(projectRoot, frontendDir, 'src/App.jsx'))) {
     console.log(chalk.red('✖  Not a MERN Starter Kit frontend.'));
     process.exit(1);
   }
 
   const isDashboard = name.toLowerCase() === "dashboard";
   const pageName = isDashboard ? "Dashboard" : (name.charAt(0).toUpperCase() + name.slice(1));
-  const pageDir = path.join(projectRoot, 'frontend/src/pages', isDashboard ? "dashboard" : name);
+  const pageDir = path.join(projectRoot, frontendDir, 'src/pages', isDashboard ? "dashboard" : name);
   const pageFile = path.join(pageDir, `${pageName}Page.jsx`);
 
   if (fs.existsSync(pageFile)) {
@@ -90,7 +91,7 @@ export default async function generatePageCmd(name, options) {
   await fs.writeFile(pageFile, pageContent);
   spinner.succeed(`Created page: ${pageFile}`);
 
-  const routerPath = path.join(projectRoot, 'frontend/src/routes/AppRouter.jsx');
+  const routerPath = path.join(projectRoot, frontendDir, 'src/routes/AppRouter.jsx');
   if (fs.existsSync(routerPath)) {
     await updateRouter(routerPath, pageName, isDashboard ? "dashboard" : name, options.route, spinner);
   } else {
@@ -98,7 +99,7 @@ export default async function generatePageCmd(name, options) {
   }
 
   if (!options.noNav) {
-    await updateNavigation(path.join(projectRoot, 'frontend/src/config/app-preset.js'), pageName, options.route || `/${isDashboard ? "dashboard" : name}`, options.icon, spinner);
+    await updateNavigation(path.join(projectRoot, frontendDir, 'src/config/app-preset.js'), pageName, options.route || `/${isDashboard ? "dashboard" : name}`, options.icon, spinner);
   }
 }
 
@@ -489,174 +490,200 @@ function generateFormComponent(pageName, fields) {
       if (field.maxLength !== undefined) validationAttrs += ` maxLength="${field.maxLength}"`;
     }
     
-    let inputElement;
-    switch (field.type) {
-      case "textarea":
-        inputElement = `<textarea
-          id="${id}"
-          name="${id}"
-          rows={3}
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${placeholder}
-          ${validationAttrs}
-        />`;
-        break;
-        
-      case "select":
-        inputElement = `<select
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-        >
-          <option value="">Select...</option>
-          {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
-        </select>`;
-        break;
-        
-      case "color":
-        inputElement = `<div className="flex items-center gap-2">
-          <input
-            type="color"
-            id="${id}"
-            name="${id}"
-            className="h-10 w-20 rounded-md border cursor-pointer"
-          />
-          <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
-        </div>`;
-        break;
-        
-      case "file":
-        inputElement = `<input
-          type="file"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-          accept="${field.accept || "*/*"}"
-          ${field.multiple ? "multiple" : ""}
-        />`;
-        break;
-        
-      case "range":
-        inputElement = `<div className="space-y-2">
-          <div className="flex justify-between text-xs">
-            <span>${field.min || 0}</span>
-            <span id="${id}-display" className="font-medium">${field.defaultValue || Math.round((field.min || 0) + (field.max || 100) / 2)}</span>
-            <span>${field.max || 100}</span>
-          </div>
-          <input
-            type="range"
-            id="${id}"
-            name="${id}"
-            min="${field.min || 0}"
-            max="${field.max || 100}"
-            step="${field.step || 1}"
-            className="w-full accent-primary"
-            onChange={(e) => document.getElementById('${id}-display').textContent = e.target.value}
-          />
-        </div>`;
-        break;
-        
-      case "hidden":
-        inputElement = `<input type="hidden" id="${id}" name="${id}" value="${field.defaultValue || ''}" />`;
-        break;
-        
-      case "date":
-        inputElement = `<input
-          type="date"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${field.min ? `min="${field.min}"` : ''}
-          ${field.max ? `max="${field.max}"` : ''}
-        />`;
-        break;
-        
-      case "time":
-        inputElement = `<input
-          type="time"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-        />`;
-        break;
-        
-      case "datetime-local":
-        inputElement = `<input
-          type="datetime-local"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${field.min ? `min="${field.min}"` : ''}
-          ${field.max ? `max="${field.max}"` : ''}
-        />`;
-        break;
-        
-      case "tel":
-        inputElement = `<input
-          type="tel"
-          id="${id}"
-          name="${id}"
-          inputMode="tel"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${placeholder}
-          pattern="^[+]?[1-9]\\d{1,14}$"
-          title="E.164 format: +[country code][number]"
-        />`;
-        break;
-        
-      case "url":
-        inputElement = `<input
-          type="url"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${placeholder}
-        />`;
-        break;
-        
-      case "email":
-        inputElement = `<input
-          type="email"
-          id="${id}"
-          name="${id}"
-          inputMode="email"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${placeholder}
-          autoComplete="email"
-        />`;
-        break;
-        
-      case "password":
-        inputElement = `<input
-          type="password"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          minLength="8"
-          autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
-        />`;
-        break;
-        
-      default:
-        inputElement = `<input
-          type="text"
-          id="${id}"
-          name="${id}"
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          ${required}
-          ${placeholder}
-          ${validationAttrs}
-        />`;
-    }
+     let inputElement;
+     switch (field.type) {
+       case "textarea":
+         inputElement = `<textarea
+           id="${id}"
+           name="${id}"
+           rows={3}
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${placeholder}
+           ${validationAttrs}
+         />`;
+         break;
+         
+       case "select":
+         inputElement = `<select
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+         >
+           <option value="">Select...</option>
+           {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
+         </select>`;
+         break;
+         
+       case "color":
+         inputElement = `<div className="flex items-center gap-2">
+           <input
+             type="color"
+             id="${id}"
+             name="${id}"
+             className="h-10 w-20 rounded-md border cursor-pointer"
+           />
+           <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
+         </div>`;
+         break;
+         
+       case "file":
+         inputElement = `<input
+           type="file"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+           accept="${field.accept || "*/*"}"
+           ${field.multiple ? "multiple" : ""}
+         />`;
+         break;
+         
+       case "range":
+         inputElement = `<div className="space-y-2">
+           <div className="flex justify-between text-xs">
+             <span>${field.min || 0}</span>
+             <span id="${id}-display" className="font-medium">${field.defaultValue || Math.round((field.min || 0) + (field.max || 100) / 2)}</span>
+             <span>${field.max || 100}</span>
+           </div>
+           <input
+             type="range"
+             id="${id}"
+             name="${id}"
+             min="${field.min || 0}"
+             max="${field.max || 100}"
+             step="${field.step || 1}"
+             className="w-full accent-primary"
+             onChange={(e) => document.getElementById('${id}-display').textContent = e.target.value}
+           />
+         </div>`;
+         break;
+         
+       case "hidden":
+         inputElement = `<input type="hidden" id="${id}" name="${id}" value="${field.defaultValue || ''}" />`;
+         break;
+         
+       case "date":
+         inputElement = `<input
+           type="date"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${field.min ? `min="${field.min}"` : ''}
+           ${field.max ? `max="${field.max}"` : ''}
+         />`;
+         break;
+         
+       case "time":
+         inputElement = `<input
+           type="time"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+         />`;
+         break;
+         
+       case "datetime-local":
+         inputElement = `<input
+           type="datetime-local"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${field.min ? `min="${field.min}"` : ''}
+           ${field.max ? `max="${field.max}"` : ''}
+         />`;
+         break;
+         
+       case "tel":
+         inputElement = `<input
+           type="tel"
+           id="${id}"
+           name="${id}"
+           inputMode="tel"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${placeholder}
+           pattern="^[+]?[1-9]\\d{1,14}$"
+           title="E.164 format: +[country code][number]"
+         />`;
+         break;
+         
+       case "url":
+         inputElement = `<input
+           type="url"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${placeholder}
+         />`;
+         break;
+         
+       case "email":
+         inputElement = `<input
+           type="email"
+           id="${id}"
+           name="${id}"
+           inputMode="email"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${placeholder}
+           autoComplete="email"
+         />`;
+         break;
+         
+       case "password":
+         inputElement = `<input
+           type="password"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           minLength="8"
+           autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
+         />`;
+         break;
+         
+       case "number":
+         inputElement = `<input
+           type="number"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${field.min !== undefined ? `min="${field.min}"` : ''}
+           ${field.max !== undefined ? `max="${field.max}"` : ''}
+           ${field.step ? `step="${field.step}"` : ''}
+         />`;
+         break;
+         
+       case "boolean":
+         inputElement = `<div className="flex items-center space-x-2">
+           <input
+             type="checkbox"
+             id="${id}"
+             name="${id}"
+             className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+             ${required ? 'required' : ''}
+           />
+           <label htmlFor="${id}" className="text-sm font-medium">${field.label || ''}</label>
+         </div>`;
+         break;
+         
+       default:
+         inputElement = `<input
+           type="text"
+           id="${id}"
+           name="${id}"
+           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+           ${required}
+           ${placeholder}
+           ${validationAttrs}
+         />`;
+     }
     
     return `      <div key="${id}" className="space-y-2">
         <label htmlFor="${id}" className="block text-sm font-medium">
@@ -704,8 +731,9 @@ ${formFieldsObject}
   });
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setValues((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    const val = type === 'checkbox' ? checked : value;
+    setValues((prev) => ({ ...prev, [name]: val }));
   };
 
   const sanitizeInput = (key, value) => {
@@ -720,18 +748,21 @@ ${formFieldsObject}
   const validateForm = () => {
     const errors = [];
     
-    ${fields.filter(f => f.required).map(f => 
-      `if (!values.${f.name}) errors.push("${f.label} is required");`
-    ).join('\n    ')}
+    ${fields.filter(f => f.required).map(f => {
+      if (f.type === 'boolean') {
+        return `if (values.${f.name} !== true) errors.push("${f.label} is required");`;
+      }
+      return `if (values.${f.name} === undefined || values.${f.name} === null || values.${f.name} === '') errors.push("${f.label} is required");`;
+    }).join('\n    ')}
     
     ${fields.filter(f => f.type === "number" || f.type === "range").map(f => 
-      `${f.min !== undefined ? `if (values.${f.name} < ${f.min}) errors.push("${f.label} must be ≥ ${f.min}");` : ''}
-    ${f.max !== undefined ? `if (values.${f.name} > ${f.max}) errors.push("${f.label} must be ≤ ${f.max}");` : ''}`
+      `${f.min !== undefined ? `if (values.${f.name} !== undefined && values.${f.name} !== null && values.${f.name} < ${f.min}) errors.push("${f.label} must be ≥ ${f.min}");` : ''}
+    ${f.max !== undefined ? `if (values.${f.name} !== undefined && values.${f.name} !== null && values.${f.name} > ${f.max}) errors.push("${f.label} must be ≤ ${f.max}");` : ''}`
     ).join('\n    ')}
     
     ${fields.filter(f => (f.minLength || f.maxLength) && ["text", "textarea", "string", "email", "tel", "url", "password"].includes(f.type)).map(f => 
-      `${f.minLength ? `if (values.${f.name}.length < ${f.minLength}) errors.push("Min ${f.minLength} characters");` : ''}
-    ${f.maxLength ? `if (values.${f.name}.length > ${f.maxLength}) errors.push("Max ${f.maxLength} characters");` : ''}`
+      `${f.minLength ? `if (values.${f.name} && values.${f.name}.length < ${f.minLength}) errors.push("Min ${f.minLength} characters");` : ''}
+    ${f.maxLength ? `if (values.${f.name} && values.${f.name}.length > ${f.maxLength}) errors.push("Max ${f.maxLength} characters");` : ''}`
     ).join('\n    ')}
     
     ${fields.filter(f => f.pattern).map(f => 
@@ -739,13 +770,13 @@ ${formFieldsObject}
     ).join('\n    ')}
     
     ${fields.filter(f => f.type === "email").map(f => 
-      `if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.${f.name})) errors.push("Invalid email");`
+      `if (values.${f.name} && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.${f.name})) errors.push("Invalid email");`
     ).join('\n    ')}
     ${fields.filter(f => f.type === "url").map(f => 
-      `if (!/^https?:\\/\\//.test(values.${f.name})) errors.push("URL must start with http:// or https://");`
+      `if (values.${f.name} && !/^https?:\\/\\//.test(values.${f.name})) errors.push("URL must start with http:// or https://");`
     ).join('\n    ')}
     ${fields.filter(f => f.type === "tel").map(f => 
-      `if (!/^[+]?[1-9]\\d{1,14}$/.test(values.${f.name})) errors.push("Invalid phone (E.164: +1234567890)");`
+      `if (values.${f.name} && !/^[+]?[1-9]\\d{1,14}$/.test(values.${f.name})) errors.push("Invalid phone (E.164: +1234567890)");`
     ).join('\n    ')}
     
     return errors;

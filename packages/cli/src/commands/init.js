@@ -43,7 +43,13 @@ const DATA_TEMPLATES = ["dashboard", "denseOps", "editorial", "commerce"];
 
 export default async function initCmd(projectName, options) {
   const spinner = ora({ discardStdin: false });
-  const isInteractive = Object.keys(options).length === 0;
+  
+  // Commander's --no-install creates `install: true` by default, `install: false` when flag is passed
+  // Interactive when: no meaningful options + install is true (default)
+  const hasCustomOptions = Object.keys(options).some(
+    key => key !== 'install' && options[key] !== undefined && options[key] !== false
+  );
+  const isInteractive = !hasCustomOptions;
 
   // Resolve parent output directory (--target) and project name
   let resolvedProjectName = projectName;

@@ -91,7 +91,7 @@ function mapFieldTypeToForm(type) {
     string: "text", 
     text: "textarea",
     number: "number", 
-    boolean: "checkbox", 
+    boolean: "boolean", 
     date: "date",
     email: "email",
     phone: "tel",
