@@ -62,7 +62,9 @@ export default async function generatePageCmd(name, options) {
   await fs.ensureDir(pageDir);
 
   let formFields = [];
+  let formMode = "page";
   if (options.withForm) {
+    formMode = options.formMode || "page";
     if (options.formFields) {
       formFields = parseFormFields(options.formFields);
     } else if (options.interactive) {
@@ -76,7 +78,7 @@ export default async function generatePageCmd(name, options) {
   if (isDashboard) {
     pageContent = generateDashboardPage(pageName);
   } else {
-    pageContent = generatePageComponent(pageName, name, formFields);
+    pageContent = generatePageComponent(pageName, name, formFields, formMode);
 
     if (formFields.length > 0) {
       const formDir = path.join(pageDir, "components");
@@ -263,14 +265,130 @@ export async function askFormFields() {
   return fields;
 }
 
-function generatePageComponent(pageName, routeName, formFields) {
-  const imports = formFields.length ? `import { ${pageName}Form } from "./components/${pageName}Form";\n` : "";
-  const formElement = formFields.length ? `<${pageName}Form />` : "/* Form goes here */";
+function singularize(word) {
+  if (word.endsWith('ies')) return word.slice(0, -3) + 'y';
+  // Words ending in ch, sh, ss, s, x, z, o + es -> remove 'es'
+  if (word.endsWith('es') && word.length > 2) {
+    const stem = word.slice(0, -2); // remove 'es' to get stem
+    if (stem.endsWith('s') || stem.endsWith('x') || stem.endsWith('z') || stem.endsWith('o')) {
+      return stem; // classes -> class, boxes -> box
+    }
+  }
+  if (word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us')) return word.slice(0, -1);
+  return word;
+}
+
+function generatePageComponent(pageName, routeName, formFields, formMode = "page") {
+  const formComponentName = `${pageName}Form`;
+  const singularName = singularize(pageName);
+
+  const pageImports = formFields.length ?
+    `import { ${formComponentName} } from "./components/${formComponentName}";\n` : "";
+  
+  if (formMode === "modal") {
+    const modalImports = `import { useState } from "react";\nimport { PageWrapper } from "@/components/layout/PageWrapper";\nimport { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";\nimport { Button } from "@/components/ui/button";\n${pageImports}`;
+
+    return `${modalImports}export default function ${pageName}Page() {
+  const [showForm, setShowForm] = useState(false);
+
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
+
+      <section>
+        <Button onClick={() => setShowForm(true)}>Add New ${singularName}</Button>
+      </section>
+
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        <p className="text-muted-foreground">No items yet. Click "Add New ${singularName}" to get started.</p>
+      </section>
+
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create ${singularName}</DialogTitle>
+            <DialogDescription>Fill in the details below.</DialogDescription>
+          </DialogHeader>
+          <${formComponentName} onSuccess={() => setShowForm(false)} />
+        </DialogContent>
+      </Dialog>
+    </PageWrapper>
+  );
+}
+`;
+  }
+  
+  if (formMode === "sidepanel") {
+    const sidepanelImports = `import { useState } from "react";\nimport { PageWrapper } from "@/components/layout/PageWrapper";\nimport { Button } from "@/components/ui/button";\nimport { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";\n${pageImports}`;
+
+    return `${sidepanelImports}export default function ${pageName}Page() {
+  const [showForm, setShowForm] = useState(false);
+
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
+
+      <section>
+        <Button onClick={() => setShowForm(true)}>Add New ${singularName}</Button>
+      </section>
+
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        <p className="text-muted-foreground">No items yet. Click "Add New ${singularName}" to get started.</p>
+      </section>
+
+      <Sheet open={showForm} onOpenChange={setShowForm}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Create ${singularName}</SheetTitle>
+            <SheetDescription>Fill in the details below.</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <${formComponentName} onSuccess={() => setShowForm(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </PageWrapper>
+  );
+}
+`;
+  }
+  
+  if (formMode === "inline") {
+    const inlineImports = `import { PageWrapper } from "@/components/layout/PageWrapper";\nimport { ${formComponentName} } from "./components/${formComponentName}";\n`;
+
+    return `${inlineImports}export default function ${pageName}Page() {
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
+
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">Create New</h2>
+        <${formComponentName} />
+      </section>
+    </PageWrapper>
+  );
+}
+`;
+  }
+  
+  // Default: page mode (form embedded in page)
+  const formElement = formFields.length ? `<${formComponentName} />` : "/* Form goes here */";
   
   return `import { useAuth } from "@/hooks/useAuth";
 import { ROUTES } from "@/utils/constants";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-${imports}export default function ${pageName}Page() {
+${pageImports}export default function ${pageName}Page() {
   const { user } = useAuth();
 
   return (
@@ -284,6 +402,11 @@ ${imports}export default function ${pageName}Page() {
         <h2 className="text-xl font-medium mb-4">Create New</h2>
         ${formElement}
       </section>
+      
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        <p className="text-muted-foreground">No items yet.</p>
+      </section>
     </PageWrapper>
   );
 }
@@ -294,13 +417,12 @@ export function generateDashboardPage(pageName, modules = []) {
   const hasModules = modules.length > 0;
   const moduleRefs = modules.map(m => m.name).join(', ');
   const fetchStatsPromises = modules.map(m => `api.get("/api/${m.name}").then(r => r.data?.data?.length || 0)`).join(', ');
-  
+
   return `import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/axiosInstance";
 import { PageWrapper } from "@/components/layout/PageWrapper";
-import { ResponsiveContainer, LineChart, BarChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -316,7 +438,7 @@ const fetchActivity = async ({ queryKey }) => {
   const responses = await Promise.all([
     ${modules.slice(0, 3).map(m => `api.get("/api/${m.name}?limit=5&skip=" + page * 5)`).join(',\n    ')}
   ]);
-  return responses.flatMap((r, i) => 
+  return responses.flatMap((r, i) =>
     (r.data?.data || []).map(item => ({ ...item, module: "${modules[0]?.name || 'item'}" }))
   ).slice(0, 10);
 };
@@ -333,16 +455,6 @@ export default function ${pageName}Page() {
     queryKey: ["dashboard-activity", activityPage],
     queryFn: fetchActivity,
   });
-
-  const chartData = [
-    { name: "Mon", value: stats?.${modules[0]?.name || 'users'} || 0 },
-    { name: "Tue", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 0.8) : 0 },
-    { name: "Wed", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 1.2) : 0 },
-    { name: "Thu", value: stats?.${modules[0]?.name || 'users'} || 0 },
-    { name: "Fri", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 1.1) : 0 },
-    { name: "Sat", value: stats?.${modules[0]?.name || 'users'} ? Math.floor(stats.${modules[0]?.name || 'users'} * 0.9) : 0 },
-    { name: "Sun", value: stats?.${modules[0]?.name || 'users'} || 0 },
-  ];
 
   return (
     <PageWrapper className="space-y-6">
@@ -374,42 +486,6 @@ export default function ${pageName}Page() {
             </Button>
           </CardContent>
         </Card>`}
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="hsl(var(--primary))" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
       </section>
 
       <section>
@@ -478,7 +554,7 @@ function generateFormComponent(pageName, fields) {
     const required = field.required ? "required" : "";
     const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : "";
     const helperText = field.helperText ? `<p className="text-xs text-muted-foreground mt-1">${field.helperText}</p>` : "";
-    
+
     let validationAttrs = "";
     if (field.type === "number" || field.type === "range") {
       if (field.min !== undefined) validationAttrs += ` min="${field.min}"`;
@@ -489,7 +565,7 @@ function generateFormComponent(pageName, fields) {
       if (field.minLength !== undefined) validationAttrs += ` minLength="${field.minLength}"`;
       if (field.maxLength !== undefined) validationAttrs += ` maxLength="${field.maxLength}"`;
     }
-    
+
      let inputElement;
      switch (field.type) {
        case "textarea":
@@ -503,7 +579,7 @@ function generateFormComponent(pageName, fields) {
            ${validationAttrs}
          />`;
          break;
-         
+
        case "select":
          inputElement = `<select
            id="${id}"
@@ -515,7 +591,7 @@ function generateFormComponent(pageName, fields) {
            {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
          </select>`;
          break;
-         
+
        case "color":
          inputElement = `<div className="flex items-center gap-2">
            <input
@@ -527,7 +603,7 @@ function generateFormComponent(pageName, fields) {
            <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
          </div>`;
          break;
-         
+
        case "file":
          inputElement = `<input
            type="file"
@@ -538,7 +614,7 @@ function generateFormComponent(pageName, fields) {
            ${field.multiple ? "multiple" : ""}
          />`;
          break;
-         
+
        case "range":
          inputElement = `<div className="space-y-2">
            <div className="flex justify-between text-xs">
@@ -558,11 +634,11 @@ function generateFormComponent(pageName, fields) {
            />
          </div>`;
          break;
-         
+
        case "hidden":
          inputElement = `<input type="hidden" id="${id}" name="${id}" value="${field.defaultValue || ''}" />`;
          break;
-         
+
        case "date":
          inputElement = `<input
            type="date"
@@ -574,7 +650,7 @@ function generateFormComponent(pageName, fields) {
            ${field.max ? `max="${field.max}"` : ''}
          />`;
          break;
-         
+
        case "time":
          inputElement = `<input
            type="time"
@@ -584,7 +660,7 @@ function generateFormComponent(pageName, fields) {
            ${required}
          />`;
          break;
-         
+
        case "datetime-local":
          inputElement = `<input
            type="datetime-local"
@@ -596,7 +672,7 @@ function generateFormComponent(pageName, fields) {
            ${field.max ? `max="${field.max}"` : ''}
          />`;
          break;
-         
+
        case "tel":
          inputElement = `<input
            type="tel"
@@ -610,7 +686,7 @@ function generateFormComponent(pageName, fields) {
            title="E.164 format: +[country code][number]"
          />`;
          break;
-         
+
        case "url":
          inputElement = `<input
            type="url"
@@ -621,7 +697,7 @@ function generateFormComponent(pageName, fields) {
            ${placeholder}
          />`;
          break;
-         
+
        case "email":
          inputElement = `<input
            type="email"
@@ -634,7 +710,7 @@ function generateFormComponent(pageName, fields) {
            autoComplete="email"
          />`;
          break;
-         
+
        case "password":
          inputElement = `<input
            type="password"
@@ -646,7 +722,7 @@ function generateFormComponent(pageName, fields) {
            autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
          />`;
          break;
-         
+
        case "number":
          inputElement = `<input
            type="number"
@@ -659,7 +735,7 @@ function generateFormComponent(pageName, fields) {
            ${field.step ? `step="${field.step}"` : ''}
          />`;
          break;
-         
+
        case "boolean":
          inputElement = `<div className="flex items-center space-x-2">
            <input
@@ -672,7 +748,7 @@ function generateFormComponent(pageName, fields) {
            <label htmlFor="${id}" className="text-sm font-medium">${field.label || ''}</label>
          </div>`;
          break;
-         
+
        default:
          inputElement = `<input
            type="text"
@@ -684,7 +760,7 @@ function generateFormComponent(pageName, fields) {
            ${validationAttrs}
          />`;
      }
-    
+
     return `      <div key="${id}" className="space-y-2">
         <label htmlFor="${id}" className="block text-sm font-medium">
           ${label}${field.required ? '<span className="text-destructive ml-1">*</span>' : ''}
@@ -693,7 +769,7 @@ function generateFormComponent(pageName, fields) {
         ${helperText}
       </div>`;
   }).join("\n\n");
-  
+
   const formFieldsObject = fields.map((f) => {
     let defaultValue = '""';
     switch (f.type) {
@@ -713,18 +789,75 @@ function generateFormComponent(pageName, fields) {
     }
     return `      ${f.name}: ${defaultValue}`;
   }).join(",\n");
-  
+
   const sanitizationImports = fields.some(f => ["email", "url", "tel", "text", "string"].includes(f.type))
     ? `import { sanitizeEmail, sanitizeUrl, sanitizePhone, sanitizeText } from "@/utils/sanitize";\n`
     : '';
-  
+
+  // Build validation blocks only for relevant fields, avoiding empty lines
+  const requiredChecks = fields.filter(f => f.required).map(f => {
+    if (f.type === 'boolean') {
+      return `if (values.${f.name} !== true) errors.push("${f.label} is required");`;
+    }
+    return `if (values.${f.name} === undefined || values.${f.name} === null || values.${f.name} === '') errors.push("${f.label} is required");`;
+  });
+
+  const numberChecks = fields.filter(f => f.type === "number" || f.type === "range").flatMap(f => {
+    const checks = [];
+    if (f.min !== undefined) checks.push(`if (values.${f.name} !== undefined && values.${f.name} !== null && values.${f.name} < ${f.min}) errors.push("${f.label} must be >= ${f.min}");`);
+    if (f.max !== undefined) checks.push(`if (values.${f.name} !== undefined && values.${f.name} !== null && values.${f.name} > ${f.max}) errors.push("${f.label} must be <= ${f.max}");`);
+    return checks;
+  });
+
+  const lengthChecks = fields.filter(f => (f.minLength || f.maxLength) && ["text", "textarea", "string", "email", "tel", "url", "password"].includes(f.type)).flatMap(f => {
+    const checks = [];
+    if (f.minLength) checks.push(`if (values.${f.name} && values.${f.name}.length < ${f.minLength}) errors.push("Min ${f.minLength} characters");`);
+    if (f.maxLength) checks.push(`if (values.${f.name} && values.${f.name}.length > ${f.maxLength}) errors.push("Max ${f.maxLength} characters");`);
+    return checks;
+  });
+
+  const patternChecks = fields.filter(f => f.pattern).map(f =>
+    `if (!${f.pattern}.test(values.${f.name})) errors.push("${f.label} has invalid format");`
+  );
+
+  const emailChecks = fields.filter(f => f.type === "email").map(f =>
+    `if (values.${f.name} && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.${f.name})) errors.push("Invalid email");`
+  );
+
+  const urlChecks = fields.filter(f => f.type === "url").map(f =>
+    `if (values.${f.name} && !/^https?:\\/\\//.test(values.${f.name})) errors.push("URL must start with http:// or https://");`
+  );
+
+  const telChecks = fields.filter(f => f.type === "tel").map(f =>
+    `if (values.${f.name} && !/^[+]?[1-9]\\d{1,14}$/.test(values.${f.name})) errors.push("Invalid phone (E.164: +1234567890)");`
+  );
+
+  const validationBlocks = [
+    ...requiredChecks,
+    ...numberChecks,
+    ...lengthChecks,
+    ...patternChecks,
+    ...emailChecks,
+    ...urlChecks,
+    ...telChecks,
+  ];
+
+  const validationCode = validationBlocks.length > 0
+    ? `\n    ${validationBlocks.join('\n    ')}\n  `
+    : '';
+
+  const resetValues = fields.map(f => {
+    if (["number","range","boolean"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${f.defaultValue}`;
+    if (["text","string","email","tel","url","password","textarea"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${JSON.stringify(f.defaultValue)}`;
+    if (["date","datetime-local"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${JSON.stringify(f.defaultValue)}`;
+    return `${f.name}: ${f.type === "boolean" ? false : f.type === "number" || f.type === "range" ? 0 : '""'}`;
+  }).join(", ");
+
   return `import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/axiosInstance";
-${sanitizationImports}
-
-export function ${pageName}Form() {
+${sanitizationImports}export function ${pageName}Form({ onSuccess } = {}) {
   const [loading, setLoading] = useState(false);
   const [values, setValues] = useState({
 ${formFieldsObject}
@@ -738,54 +871,23 @@ ${formFieldsObject}
 
   const sanitizeInput = (key, value) => {
     switch (key) {
-      ${fields.filter(f => ["email", "url", "tel", "text"].includes(f.type)).map(f => 
-        `case "${f.name}": return sanitize${f.type.charAt(0).toUpperCase() + f.type.slice(1)}(value);`
-      ).join('\n      ')}
+      ${fields.filter(f => ["email", "url", "tel", "text", "string"].includes(f.type)).map(f => {
+        const sanitizers = { email: "Email", url: "Url", tel: "Phone", text: "Text", string: "Text" };
+        return `case "${f.name}": return sanitize${sanitizers[f.type]}(value);`;
+      }).join('\n      ')}
       default: return value;
     }
   };
 
   const validateForm = () => {
-    const errors = [];
-    
-    ${fields.filter(f => f.required).map(f => {
-      if (f.type === 'boolean') {
-        return `if (values.${f.name} !== true) errors.push("${f.label} is required");`;
-      }
-      return `if (values.${f.name} === undefined || values.${f.name} === null || values.${f.name} === '') errors.push("${f.label} is required");`;
-    }).join('\n    ')}
-    
-    ${fields.filter(f => f.type === "number" || f.type === "range").map(f => 
-      `${f.min !== undefined ? `if (values.${f.name} !== undefined && values.${f.name} !== null && values.${f.name} < ${f.min}) errors.push("${f.label} must be ≥ ${f.min}");` : ''}
-    ${f.max !== undefined ? `if (values.${f.name} !== undefined && values.${f.name} !== null && values.${f.name} > ${f.max}) errors.push("${f.label} must be ≤ ${f.max}");` : ''}`
-    ).join('\n    ')}
-    
-    ${fields.filter(f => (f.minLength || f.maxLength) && ["text", "textarea", "string", "email", "tel", "url", "password"].includes(f.type)).map(f => 
-      `${f.minLength ? `if (values.${f.name} && values.${f.name}.length < ${f.minLength}) errors.push("Min ${f.minLength} characters");` : ''}
-    ${f.maxLength ? `if (values.${f.name} && values.${f.name}.length > ${f.maxLength}) errors.push("Max ${f.maxLength} characters");` : ''}`
-    ).join('\n    ')}
-    
-    ${fields.filter(f => f.pattern).map(f => 
-      `if (!${f.pattern}.test(values.${f.name})) errors.push("${f.label} has invalid format");`
-    ).join('\n    ')}
-    
-    ${fields.filter(f => f.type === "email").map(f => 
-      `if (values.${f.name} && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(values.${f.name})) errors.push("Invalid email");`
-    ).join('\n    ')}
-    ${fields.filter(f => f.type === "url").map(f => 
-      `if (values.${f.name} && !/^https?:\\/\\//.test(values.${f.name})) errors.push("URL must start with http:// or https://");`
-    ).join('\n    ')}
-    ${fields.filter(f => f.type === "tel").map(f => 
-      `if (values.${f.name} && !/^[+]?[1-9]\\d{1,14}$/.test(values.${f.name})) errors.push("Invalid phone (E.164: +1234567890)");`
-    ).join('\n    ')}
-    
+    const errors = [];${validationCode}
     return errors;
   };
 
-  const handleSubmit = async (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const errors = validateForm();
       if (errors.length > 0) {
@@ -793,27 +895,23 @@ ${formFieldsObject}
         setLoading(false);
         return;
       }
-      
+
       const sanitizedData = Object.fromEntries(
         Object.entries(values).map(([k, v]) => [k, sanitizeInput(k, v)])
       );
-      
+
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-      const config = { 
-        headers: { 
+      const config = {
+        headers: {
           'Content-Type': 'application/json',
           ...(csrfToken && { 'X-CSRF-Token': csrfToken })
-        } 
+        }
       };
-      
+
       const response = await api.post("/${pageName.toLowerCase()}", sanitizedData, config);
       toast.success("Item created successfully!");
-      setValues({${fields.map(f => {
-        if (["number","range","boolean"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${f.defaultValue}`;
-        if (["text","string","email","tel","url","password","textarea"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${JSON.stringify(f.defaultValue)}`;
-        if (["date","datetime-local"].includes(f.type) && f.defaultValue !== undefined) return `${f.name}: ${JSON.stringify(f.defaultValue)}`;
-        return `${f.name}: ${f.type === "boolean" ? false : f.type === "number" || f.type === "range" ? 0 : '""'}`;
-      }).join(", ")}});
+      setValues({${resetValues}});
+      if (onSuccess) onSuccess();
     } catch (err) {
       const errorMsg = err?.response?.data?.message || err?.message || "Failed to create";
       toast.error(errorMsg);

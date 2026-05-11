@@ -9,6 +9,7 @@ The official CLI for the MERN Fullstack Starter Kit. Scaffold new projects and e
 | `init [project-name]` | Create a new project from the starter kit template |
 | `generate` | Add features to an existing project (`module`, `page`, `theme`, `deploy`) |
 | `remove <type> <name>` | Remove a generated page or module, cleaning up references |
+| `cleanup` | Clean up demo files and branding to prepare project |
 | `customize` | Customize design & branding (`theme`, `layout`, `brand`, `data`) |
 | `wizard` | Interactive guide to extend your project step-by-step |
 
@@ -34,7 +35,7 @@ pnpm add -g @fullstack-starter/cli
 fsk init [project-name]
 ```
 
-Interactive mode will ask for preset, theme, layout, brand, extra modules, and deployment configs.
+Interactive mode will ask for preset, theme, layout, brand, extra modules, deployment targets, and architecture level.
 
 Non-interactive:
 
@@ -84,19 +85,90 @@ fsk generate deploy --target all
 
 #### Module generator
 
-Creates `backend/src/modules/<name>/` with 5 files and mounts the route in `backend/src/routes/index.js`.
+Creates `backend/src/modules/<name>/` with 5 files (model, service, controller, routes, validator) and mounts the route in `backend/src/routes/index.js`.
 
-Options: `--force` to overwrite existing files.
+Generate a frontend page alongside the module:
+
+```bash
+fsk generate module orders --fields "name:string:required;total:number:min=0" --with-page
+```
+
+Form display mode for the generated page (default: `page`):
+
+```bash
+fsk generate module orders \
+  --fields "name:string:required;total:number:min=0" \
+  --with-page \
+  --form-mode modal   # page|modal|sidepanel|inline
+```
+
+Options: `--force`, `--fields`, `--interactive`, `--architecture` (lightweight|moderate|advanced), `--with-page`, `--form-mode`
 
 #### Page generator
 
 Creates `frontend/src/pages/<name>/<Name>Page.jsx`, adds a lazy import to `AppRouter.jsx`, inserts a `<Route>` (before the wildcard 404), and optionally adds a navigation entry in `app-preset.js`.
 
-Options:
-- `--route` — Custom route path (default: `/${name}`)
-- `--icon` — Lucide React icon name (default: layout)
-- `--no-nav` — Skip adding to navigation
-- `--force` — Overwrite existing files
+**With a form:**
+
+```bash
+fsk generate page product --with-form --form-fields "name:string:required;price:number:min=0;isActive:boolean"
+```
+
+**Form display modes:**
+
+```bash
+# Default: form embedded directly in the page
+fsk generate page product --with-form --form-fields "name:string:required"
+
+# Modal: form opens in a Dialog overlay
+fsk generate page product --with-form --form-mode modal --form-fields "name:string:required"
+
+# Sidepanel: form slides in from the right via a Sheet
+fsk generate page product --with-form --form-mode sidepanel --form-fields "name:string:required"
+
+# Inline: minimal, form replaces page content
+fsk generate page product --with-form --form-mode inline --form-fields "name:string:required"
+```
+
+**Interactive field definition:**
+
+```bash
+fsk generate page product --with-form --interactive
+```
+
+This prompts for each field's name, type, label, validation rules, min/max, pattern, placeholder, and helper text.
+
+**Field specification format:**
+
+```
+name:type:rule1|rule2;name2:type2:ruleA|ruleB
+```
+
+Example:
+
+```
+name:string:required|minLength=3;price:number:min=0;email:email:required;active:boolean
+```
+
+Supported types: `string`, `text`, `email`, `password`, `number`, `boolean`, `date`, `datetime-local`, `time`, `tel`, `url`, `color`, `range`, `file`, `hidden`, `select`, `textarea`
+
+Supported rules: `required`, `unique`, `minLength=N`, `maxLength=N`, `min=N`, `max=N`, `step=N`, `pattern=/regex/`, `default=value`, `accept=type`, `multiple`
+
+**Quick field add (adding a forgotten field):**
+
+If you forgot to add a field, just re-run the generator with the complete field list and `--force`:
+
+```bash
+# You already have a "product" page with name + price
+# Add the missing "isActive" boolean field:
+fsk generate page product --with-form \
+    --form-fields "name:string:required;price:number:min=0;isActive:boolean" \
+    --force
+```
+
+Routes and navigation entries are idempotent — they won't be duplicated.
+
+Options: `--route`, `--no-nav`, `--icon`, `--force`, `--with-form`, `--form-mode` (page|modal|sidepanel|inline), `--form-fields`, `--interactive`
 
 #### Theme generator
 
@@ -121,113 +193,76 @@ Generated files:
 - Vercel: `vercel.json`
 - Railway: `railway.yaml`
 
+---
+
+### Cleanup
+
+Remove demo files, sample data, and starter kit branding to prepare your project for production or distribution.
+
+```bash
+# Minimal: remove demo pages and replace branding
+fsk cleanup --preset minimal
+
+# Production: also strip test files and metadata
+fsk cleanup --preset production
+
+# Template: extract reusable UI components into .template/
+fsk cleanup --preset template
+
+# Interactive: choose mode from a prompt
+fsk cleanup
+```
+
+Presets:
+- **minimal** — Removes demo/example page directories and replaces starter kit branding in README and package.json
+- **production** — Minimal + removes test files (`.test.js`, `__tests__/`)
+- **template** — Extracts reusable UI components, lib utilities, and backend utils into a `.template/` directory for reuse in future projects
+
+---
+
 ### Customize an existing project
 
 Modify your project's design tokens, layout, branding, and data display templates directly from the CLI. All changes edit `frontend/src/config/app-preset.js` in-place.
 
-> **Why customize?** After `init`, your project is a fully working MERN app. Use `customize` to tweak individual attributes without re-running `init`, or to evolve the design over time (e.g., rebrand, seasonal theme change, layout A/B test).
-
 #### Theme
-
-Switch between **built-in** design themes:
 
 ```bash
 fsk customize theme set executiveBlue
-fsk customize theme set clinicSoft
-fsk customize theme set studioElevated
-fsk customize theme set operationsDense
-fsk customize theme set commerceWarm
-```
-
-Or import a **custom shadcn/ui CSS** theme from your design system:
-
-```bash
-# From a file (must contain :root and .dark blocks)
 fsk customize theme import --file ./brand-theme.css
-
-# Or paste CSS inline
 fsk customize theme import --paste ":root { --primary: 240 80% 60%; } .dark { --primary: 280 70% 65%; }"
-
-# Optional: specify fallback theme if CSS is incomplete, and appearance recipe
-fsk customize theme import --file ./theme.css --fallback executiveBlue --appearance elevated
 ```
-
-The `import` command saves the CSS to `frontend/src/config/imported-shadcn-theme.css` and prints integration instructions — you'll need to paste a small code snippet into `app-preset.js` to activate it. This gives you full control beyond the 5 built-in themes.
 
 #### Layout
 
-Change the page layout shell (affects navigation, header, sidebar placement):
-
 ```bash
 fsk customize layout set hybridSaas
-fsk customize layout set sidebarWorkspace
-fsk customize layout set topbarPortal
-fsk customize layout set rightRailStudio
 ```
+
+Options: `hybridSaas`, `sidebarWorkspace`, `topbarPortal`, `rightRailStudio`
 
 #### Brand
 
-Update project name and tagline (appears in header, footer, landing page, browser title):
-
 ```bash
 fsk customize brand set --name "AcmeCorp" --tagline "Innovate daily"
-fsk customize brand set --name "AcmeCorp"              # only name
-fsk customize brand set --tagline "Innovate daily"     # only tagline
 ```
 
 #### Data display
 
-Select a responsive data template for tables/metrics (the starter ships pre-made components for each):
-
 ```bash
-fsk customize data set dashboard      # standard card + table layout
-fsk customize data set denseOps       # compact, high-density rows
-fsk customize data set editorial      # editorial/magazine style
-fsk customize data set commerce       # product-grid style
+fsk customize data set dashboard
 ```
+
+Options: `dashboard`, `denseOps`, `editorial`, `commerce`
 
 #### Discovery
 
-List available built-in options:
-
 ```bash
 fsk customize list-themes
 fsk customize list-layouts
 fsk customize list-data
 ```
 
-### Remove generated resources
-
-Modify design tokens, layout, branding, and data display templates in-place by updating `frontend/src/config/app-preset.js`.
-
-```bash
-# Switch to a different built-in theme
-fsk customize theme set clinicSoft
-
-# Import a custom shadcn theme from CSS
-fsk customize theme import --file ./my-theme.css
-fsk customize theme import --paste ":root { --primary: 240 80% 60%; } .dark { --primary: 280 70% 65%; }" --fallback executiveBlue --appearance quiet
-
-# Change layout shell
-fsk customize layout set rightRailStudio
-
-# Update brand identity
-fsk customize brand set --name "AcmeCorp" --tagline "Innovate daily"
-
-# Switch data display template (used by dashboard widgets)
-fsk customize data set denseOps
-
-# Discover available options
-fsk customize list-themes
-fsk customize list-layouts
-fsk customize list-data
-```
-
-#### Notes
-
-- `fsk customize theme import` saves the CSS to `frontend/src/config/imported-shadcn-theme.css` and prints code to paste into `app-preset.js` using `installShadcnDesignPreset`. This allows fully custom themes beyond the built-in palette.
-- All `customize` commands edit `app-preset.js` in-place using regex replacement. They are idempotent — safe to run multiple times.
-- To make your project unique, mix a built-in preset with custom overrides using `fsk customize brand set`, `fsk customize theme set`, etc. You can also edit `app-preset.js` directly for fine-grained control.
+---
 
 ### Remove generated resources
 
@@ -241,8 +276,9 @@ fsk remove page reports
 fsk remove module products --force
 ```
 
-Options:
-- `--force` — Skip interactive confirmation
+Options: `--force` — Skip interactive confirmation
+
+---
 
 ### Wizard (interactive guide)
 
@@ -256,15 +292,17 @@ fsk wizard
 
 The wizard lets you:
 - Add backend modules
-- Add frontend pages
+- Add frontend pages with forms
 - Import shadcn themes
 - Generate deploy configs
 - Remove existing resources
+- Run cleanup presets
 
 All actions are batched and executed with a single confirmation.
 
-Options:
-- `--skip-confirm` — Skip the final confirmation step
+Options: `--skip-confirm` — Skip the final confirmation step
+
+---
 
 ## Local Development & Testing
 
@@ -280,11 +318,12 @@ node bin/cli.js init my-test --preset saas --no-install --target /tmp --force
 
 # Run other commands inside the generated project
 cd /tmp/my-test
-node ../../bin/cli.js generate module products
-node ../../bin/cli.js generate page admin --route /admin --icon shield
+node ../../bin/cli.js generate module products --fields "name:string:required;price:number:min=0" --with-page
+node ../../bin/cli.js generate page admin --route /admin --icon shield --with-form --form-mode modal --form-fields "title:string:required"
 node ../../bin/cli.js customize theme set clinicSoft
 node ../../bin/cli.js customize brand set --name "TestApp"
 node ../../bin/cli.js remove page admin --force
+node ../../bin/cli.js cleanup --preset minimal
 ```
 
 ### Automated smoke test
@@ -297,12 +336,15 @@ node test-smoke.js
 
 This script exercises all core commands end-to-end:
 - `init` → fresh project
-- `generate module` → scaffold + mount
+- `generate module` → scaffold + mount (with tests for lightweight/moderate/advanced)
 - `generate page` → component + lazy import + route + nav
-- `generate page --force` → idempotent overwrite
+- `generate page --form-mode modal|sidepanel|inline` → UI overlay variants
+- `generate page --with-form` → form with validation, sanitization, `onSuccess` callback
+- `generate page --force` → idempotent overwrite (add forgotten fields)
 - `generate deploy --target all` → Docker/Vercel/Railway files
 - `remove page` → full cleanup (dir, import, route, nav)
-- `generate module` then `remove module` → unmount + directory deletion
+- `remove module` → unmount + directory deletion
+- `cleanup --preset minimal|production|template`
 - Syntax validation of generated `.js` files
 - Presence checks for generated assets
 
@@ -324,12 +366,29 @@ grep -c "lazy(() => import" frontend/src/routes/AppRouter.jsx
 
 ---
 
+## Generated form features
+
+Forms generated with `--with-form` include:
+
+- **Input sanitization** — Email lowercasing, URL auto-prefix, phone stripping, HTML stripping for text fields. Imports `sanitizeEmail`, `sanitizeUrl`, `sanitizePhone`, `sanitizeText` from `@/utils/sanitize`.
+- **Strict validation** — Required fields check `=== undefined || === null || === ''` to correctly validate `0` and `false`.
+- **Boolean fields** — Default to `false`, render as checkboxes using `type === 'checkbox' ? checked : value`.
+- **Number fields** — Default to `0`, with min/max validation that skips checks for undefined/null values.
+- **onSuccess callback** — Form accepts an optional `onSuccess` prop called after successful submission. This enables modal/sidepanel forms to close automatically:
+
+```jsx
+<CustomerForm onSuccess={() => setShowForm(false)} />
+```
+
+---
+
 ## Safety
 
 - `init` always creates a fresh project directory (non-destructive).
 - `generate` commands are additive by default and refuse to overwrite existing files without `--force`.
 - `customize` commands are **idempotent** — safe to run repeatedly; they replace values in-place without affecting other parts of `app-preset.js`.
 - `remove` prompts for confirmation by default (use `--force` to skip); it only touches files it generated.
+- `cleanup` only removes known demo directories and replaces known branding strings. It never deletes user-created files.
 - No in-place modifications of the starter kit repo itself. The template is downloaded from GitHub (tagged release) via GitHub archives.
 
 ## Architecture
@@ -337,6 +396,7 @@ grep -c "lazy(() => import" frontend/src/routes/AppRouter.jsx
 - The CLI downloads the starter kit on-demand from GitHub (pinned to `main` or latest release).
 - All customizations are applied to the copied project only.
 - Generators follow the established naming conventions and patterns of the starter kit.
+- Form display modes use shadcn/ui primitives (`Dialog`, `Sheet`) for consistent, accessible overlays.
 
 ## Contributing
 

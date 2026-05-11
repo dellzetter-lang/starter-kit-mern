@@ -9,6 +9,23 @@ packages/cli/
 ├── src/
 │   ├── commands/
 │   │   ├── init.js         # Project scaffolding (fresh copy)
+│   │   ├── cleanup.js      # Cleanup: strip demo files, branding, test files
+│   │   └── generate/
+│   │       ├── module.js   # Backend module generator
+│   │       ├── page.js     # Frontend page generator (with form modes)
+│   │       ├── theme.js    # Shadcn theme importer
+│   │       ├── deploy.js   # Deployment config generator
+│   │       └── index.js    # Command registration
+│   └── lib/                # (future) shared utilities
+├── package.json           # CLI package manifest
+└── README.md              # User-facing docs (this is separate)
+```
+packages/cli/
+├── bin/
+│   └── cli.js              # Commander entry point (executable)
+├── src/
+│   ├── commands/
+│   │   ├── init.js         # Project scaffolding (fresh copy)
 │   │   └── generate/
 │   │       ├── module.js   # Backend module generator
 │   │       ├── page.js     # Frontend page generator
@@ -29,25 +46,30 @@ Monorepo root:
 
 ### Entry Point Flow
 
-1. **bin/cli.js** — initializes Commander, registers commands with subcommands `init` and `generate`, sets up aliases (`create` → `init`, `g` → `generate`), and exports the program.
+1. **bin/cli.js** — initializes Commander, registers commands with subcommands `init`, `generate`, `cleanup`, `remove`, `customize`, and `wizard`, sets up aliases, and exports the program.
 
 2. **Command handlers** — each file under `src/commands/` exports a default async function with signature:
    - `init(projectName, options)` — `projectName` comes from first positional arg, `options` = parsed flags
    - `generate(subcommand, name, options)` — `name` is the resource name (module/page/theme/deploy), `options` = flags
+   - `cleanup(options)` — runs one of the cleanup presets (minimal/production/template)
 
 3. **Template flow for `init`**:
-   - Create temp dir `os.tmpdir()/fsk-<timestamp>`
-   - Download GitHub tar.gz with manual 302 redirect handling
-   - Extract with `tar-stream` using `strip: 1` (removes top-level folder)
-   - Copy extracted files **directly** from tempDir → destination (no nested folder)
-   - Customize `frontend/src/config/app-preset.js` using selected preset + brand/theme/layout/dataDisplay overrides
-    - Loop through `extraModules` → call `generateBackendModule()` for each
-    - Loop through `deployTargets` → call `generateDeployConfig()` for each
-    - Optionally run `pnpm install` in destination
+    - Create temp dir `os.tmpdir()/fsk-<timestamp>`
+    - Download GitHub tar.gz with manual 302 redirect handling
+    - Extract with `tar-stream` using `strip: 1` (removes top-level folder)
+    - Copy extracted files **directly** from tempDir → destination (no nested folder)
+    - Customize `frontend/src/config/app-preset.js` using selected preset + brand/theme/layout/dataDisplay overrides
+     - Loop through `extraModules` → call `generateBackendModule()` for each
+     - Loop through `deployTargets` → call `generateDeployConfig()` for each
+     - Ensure `frontend/src/utils/sanitize.js` exists for form sanitization
+     - Optionally run `pnpm install` in destination
 
  4. **Template flow for `generate`** — operates in-place on an existing project:
-    - `module <name>`: writes 5 files under `backend/src/modules/<name>/`, mounts route in `backend/src/routes/index.js`
+    - `module <name>`: writes 5 files under `backend/src/modules/<name>/`, mounts route in `backend/src/routes/index.js`, optionally generates frontend page with form
     - `page <name>`: writes `frontend/src/pages/<name>/<Name>Page.jsx` with correct hook import (`@/hooks/useAuth`), adds lazy import to `AppRouter.jsx`, inserts `<Route>` before the wildcard 404 route, updates `navigation` in `app-preset.js`
+    - `page <name> --form-mode modal`: wraps form in a Radix `Dialog` overlay with open/close state
+    - `page <name> --form-mode sidepanel`: wraps form in a Radix `Sheet` overlay with open/close state
+    - `page <name> --form-mode inline`: embeds form directly in page (default)
     - `theme`: parses CSS from `--file` or `--paste`, saves CSS file, prints import instructions
     - `deploy <target>`: writes Dockerfile/docker-compose.yml, vercel.json, or railway.yaml to project root
 
@@ -56,6 +78,35 @@ Monorepo root:
 - `init` always creates a **new directory**; never modifies existing content except via `--force` when dest dir is non-empty.
 - `generate` commands refuse to overwrite existing files unless `--force` is passed.
 - The template **is never modified in-place**; download → extract → copy to dest → then mutate.
+- `cleanup` is non-destructive to user code — only removes known demo patterns and replaces known branding strings.
+
+## Cleanup Command
+
+Removes demo files, sample data, starter kit branding, and optionally test files. Three presets:
+
+### Implementation: `src/commands/cleanup.js`
+
+- **minimal**: Removes `frontend/src/pages/demo/`, `frontend/src/pages/examples/`, `frontend/src/components/demo/`, and replaces starter kit branding strings in `README.md` and `package.json`
+- **production**: Minimal + removes `.test.js`/`.spec.js` files and `__tests__/` directories from both frontend and backend
+- **template**: Extracts reusable UI components (dialogs, sheets, utils) into `.template/` directory and resets branding
+
+### Usage
+
+```bash
+# Interactive prompt
+fsk cleanup
+
+# Non-interactive
+fsk cleanup --preset minimal
+fsk cleanup --preset production
+fsk cleanup --preset template
+```
+
+### Branding Replacement Details
+
+Scans all `.js`, `.jsx`, `.json` files under `frontend/src/` and `backend/src/` for the patterns "MERN Fullstack Starter Kit", "MERN Starter", and "Starter Kit", replacing them with "Project". Also renames package from starter-kit names to `my-project`.
+
+## Form Generation
 
 ## Local Testing
 
@@ -421,6 +472,69 @@ await pageGenerator(projectRoot, 'reports', { route: '/reports', icon: 'bar-char
 ```
 
 Generators rely on `process.cwd()` for project root; the wizard temporarily `chdir`s to target project before invoking each generator, then restores.
+
+## Form Generation
+
+The page generator (`fsk generate page <name> --with-form`) creates both a page component and a form component with built-in validation, sanitization, and configurable layout.
+
+### Form Modes (`--form-mode`)
+
+| Mode | Behavior | UI Components |
+|------|----------|---------------|
+| `page` (default) | Form embedded directly in the page | None — standard form |
+| `modal` | Form opens in a Dialog overlay | `@radix-ui/react-dialog` (Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription) |
+| `sidepanel` | Form slides in from the right | `@radix-ui/react-dialog` (Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription) |
+| `inline` | Minimal form-only layout | None — direct embed |
+
+### Implementation: `src/commands/generate/page.js`
+
+**Key functions:**
+
+- `generatePageComponent(pageName, routeName, formFields, formMode)` — generates the page component based on form mode
+- `generateFormComponent(pageName, fields)` — generates the form component with validation + sanitization
+- `parseFormFields(str)` — parses field spec string `"name:type:rule1|rule2;name2:type2"`
+- `askFormFields()` — interactive prompt for field-by-field definition
+
+**Generated form features:**
+
+- **`onSuccess` callback prop** — `export function XxxForm({ onSuccess } = {})`. When provided by a modal/sidepanel page, called after successful submit to close the overlay
+- **Strict validation** — Required fields use `values.field === undefined || values.field === null || values.field === ''` to correctly validate `0` and `false`
+- **Boolean default** — `false` (not `""`), checked via `type === 'checkbox' ? checked : value`
+- **Number default** — `0`, with min/max validation that skips undefined/null
+- **Input sanitization** — Imports `sanitizeEmail`, `sanitizeUrl`, `sanitizePhone`, `sanitizeText` from `@/utils/sanitize`
+- **Reset on submit** — After successful POST, form resets all fields to their default values
+
+### Usage
+
+```bash
+# Default embedded form
+fsk generate page product --with-form --form-fields "name:string:required;price:number:min=0;active:boolean"
+
+# Modal form
+fsk generate page customer --with-form --form-mode modal --form-fields "name:string:required;notes:textarea"
+
+# Sidepanel form
+fsk generate page settings --with-form --form-mode sidepanel --form-fields "name:string:required"
+
+# Inline form
+fsk generate page search --with-form --form-mode inline --form-fields "query:string:required"
+
+# Interactive (prompts for each field)
+fsk generate page product --with-form --interactive
+```
+
+### Adding a forgotten field
+
+Re-run the generator with the complete field list and `--force`:
+
+```bash
+# Already have "product" page with name + price; forgot "active"
+fsk generate page product --with-form \
+    --form-fields "name:string:required;price:number:min=0;active:boolean" \
+    --force
+```
+
+Routes and navigation entries are idempotent — no duplicates on re-run.
 
 ### Customize command
 

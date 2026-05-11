@@ -1,0 +1,1 @@
+export default async function doctorCmd() { console.log("doctor"); }

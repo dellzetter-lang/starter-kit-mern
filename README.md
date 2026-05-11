@@ -698,4 +698,61 @@ When adapting this starter:
 10. Update `.env` values for your deployment.
 
 Search for `TODO: Customize` for intended extension points and `STARTER-KIT:` for comments explaining why the starter makes certain decisions.
+
+## CLI Tool
+
+A companion CLI tool (`@fullstack-starter/cli`) automates scaffolding and code generation:
+
+```bash
+# Install
+pnpm add -g @fullstack-starter/cli
+
+# Or use via npx
+npx @fullstack-starter/cli init my-app
+```
+
+### Key Commands
+
+| Command | Description |
+|---------|-------------|
+| `fsk init [name]` | Scaffold a new project from the template |
+| `fsk generate module <name>` | Generate backend module (model, service, controller, routes, validator) |
+| `fsk generate page <name>` | Generate frontend page with route and nav entry |
+| `fsk cleanup` | Clean up demo files and branding for production |
+| `fsk customize` | Customize design, branding, layout, and data display |
+| `fsk remove <type> <name>` | Remove a generated page or module with cleanup |
+| `fsk wizard` | Interactive guide to extend your project |
+
+### Form Generation
+
+Pages can be generated with a form component in four display modes:
+
+```bash
+# Default: form embedded in page
+fsk generate page product --with-form --form-fields "name:string:required;price:number:min=0"
+
+# Modal: form opens in a Dialog overlay
+fsk generate page product --with-form --form-mode modal --form-fields "name:string:required"
+
+# Sidepanel: form slides in from the right
+fsk generate page product --with-form --form-mode sidepanel --form-fields "name:string:required"
+
+# Inline: minimal form-only layout
+fsk generate page product --with-form --form-mode inline --form-fields "name:string:required"
+```
+
+Forms include built-in validation, input sanitization, and boolean checkbox handling. See `packages/cli/README.md` for full documentation.
+
+### Cleanup
+
+Prepare the project for production or distribution:
+
+```bash
+fsk cleanup --preset minimal      # Remove demo files and branding
+fsk cleanup --preset production   # Also strip test files
+fsk cleanup --preset template     # Extract reusable components
+```
+
+---
+
 # starter-kit-mern

@@ -426,6 +426,16 @@ export function sanitizeBoolean(value) {
     }
   }
 
+  // Step 8.5: Copy .env.example to .env if it doesn't exist
+  const backendEnvPath = path.join(outDir, "backend", ".env");
+  const backendEnvExamplePath = path.join(outDir, "backend", ".env.example");
+  if (!fs.existsSync(backendEnvPath) && fs.existsSync(backendEnvExamplePath)) {
+    await fs.copy(backendEnvExamplePath, backendEnvPath);
+    spinner.succeed("Created .env from .env.example (backend)");
+  } else if (fs.existsSync(backendEnvPath)) {
+    spinner.info("Backend .env already exists \u2014 skipping copy");
+  }
+
   // Step 9: Success message
   console.log("");
   console.log(chalk.green.bold("✨ Project created!"));

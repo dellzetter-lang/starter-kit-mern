@@ -23,6 +23,7 @@ import generateDeploy from "../src/commands/generate/deploy.js";
 import remove from "../src/commands/remove.js";
 import wizard from "../src/commands/wizard.js";
 import customize from "../src/commands/customize.js";
+import cleanup from "../src/commands/cleanup.js";
 
 program
   .name("fsk")
@@ -81,6 +82,11 @@ generateCmd
     "moderate",
   )
   .option("--with-page", "Generate corresponding frontend page")
+  .option(
+    "--form-mode <mode>",
+    "Form display mode if --with-page: page|modal|sidepanel|inline",
+    "page",
+  )
   .action(generateModule);
 
 generateCmd
@@ -91,6 +97,7 @@ generateCmd
   .option("--icon <name>", "Icon name from lucide-react")
   .option("--force", "Overwrite existing files")
   .option("--with-form", "Generate form component")
+  .option("--form-mode <mode>", "Form display mode: page|modal|sidepanel|inline", "page")
   .option("--form-fields <spec>", "Form field specification")
   .option("--interactive", "Prompt for form fields interactively")
   .action(generatePage);
@@ -118,6 +125,13 @@ program
   .description("Remove a generated page or module (with cleanup)")
   .option("--force", "Skip confirmation")
   .action(remove);
+
+// Cleanup: remove demo files, strip branding, prepare for deployment
+program
+  .command("cleanup")
+  .description("Clean up demo files and branding to prepare project")
+  .option("--preset <mode>", "Cleanup mode: minimal|production|template")
+  .action((options) => cleanup(options.preset));
 
 // Interactive wizard — guided setup after init or anytime
 program

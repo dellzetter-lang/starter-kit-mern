@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pagination controls in generated table/list views
 - Enhanced validation messages with field labels
 - Multi-language/i18n stub support in forms
+- **Cleanup command** (`fsk cleanup`) with presets: minimal, production, template
+- **Form display modes**: `--form-mode modal|sidepanel|inline|page` for flexible UI layouts
+- **Radix UI Dialog & Sheet primitives** for modal and sidepanel form overlays
+- **Form `onSuccess` callback** enabling automatic modal/sheet dismissal after submission
+- **Strict form validation**: `=== undefined || === null || === ''` checks to correctly handle `0` and `false` values
+- **Number field**: default value `0`, with min/max validation
+- **Boolean field**: default value `false`, rendered as checkbox with `checked` handling
+- **Input sanitization utilities** (`@/utils/sanitize`) for email, URL, phone, text, number, boolean
+- `--form-mode` option on `fsk generate module --with-page` to control generated page layout
 
 ### Changed
 - **Fixed**: Navigation entry template literals now properly interpolate values instead of writing `${...}` literally

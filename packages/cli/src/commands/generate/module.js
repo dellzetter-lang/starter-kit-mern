@@ -61,6 +61,7 @@ export default async function generateModuleCmd(name, options) {
     const pageOptions = {
       ...options,
       withForm: true,
+      formMode: options.formMode || "page",
       force: options.force,
       noNav: options.noNav,
       route: `/${moduleName}`,
