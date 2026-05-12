@@ -519,12 +519,12 @@ function generatePageComponent(pageName, routeName, formFields, formMode = "page
 
        <Sheet open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
          <SheetContent>
-           <SheetHeader>
-             <SheetTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</SheetTitle>
-             <SheetDescription>
-               {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
-             </SheetDescription>
-           </SheetHeader>
+            <SheetHeader>
+              <SheetTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</SheetTitle>
+              <SheetDescription>
+                {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
+              </SheetDescription>
+            </SheetHeader>
            <div className="mt-4">
              <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
            </div>
@@ -901,7 +901,7 @@ function generateFormComponent(pageName, fields) {
             ${placeholder}
             ${validationAttrs}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -912,7 +912,7 @@ function generateFormComponent(pageName, fields) {
             className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             ${required}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           >
             <option value="">Select...</option>
             {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
@@ -927,7 +927,7 @@ function generateFormComponent(pageName, fields) {
               name="${id}"
               className="h-10 w-20 rounded-md border cursor-pointer"
               onChange={handleChange}
-              value={values.${f.name}}
+              value={values.${field.name}}
             />
             <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
           </div>`;
@@ -963,13 +963,13 @@ function generateFormComponent(pageName, fields) {
                 handleChange(e);
                 document.getElementById('${id}-display').textContent = e.target.value;
               }}
-              value={values.${f.name}}
+              value={values.${field.name}}
             />
           </div>`;
           break;
 
         case "hidden":
-          inputElement = `<input type="hidden" id="${id}" name="${id}" value={values.${f.name}} />`;
+          inputElement = `<input type="hidden" id="${id}" name="${id}" value={values.${field.name}} />`;
           break;
 
         case "date":
@@ -982,7 +982,7 @@ function generateFormComponent(pageName, fields) {
             ${field.min ? `min="${field.min}"` : ''}
             ${field.max ? `max="${field.max}"` : ''}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -994,7 +994,7 @@ function generateFormComponent(pageName, fields) {
             className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             ${required}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1008,7 +1008,7 @@ function generateFormComponent(pageName, fields) {
             ${field.min ? `min="${field.min}"` : ''}
             ${field.max ? `max="${field.max}"` : ''}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1024,7 +1024,7 @@ function generateFormComponent(pageName, fields) {
             pattern="^[+]?[1-9]\\d{1,14}$"
             title="E.164 format: +[country code][number]"
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1037,7 +1037,7 @@ function generateFormComponent(pageName, fields) {
             ${required}
             ${placeholder}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1052,7 +1052,7 @@ function generateFormComponent(pageName, fields) {
             ${placeholder}
             autoComplete="email"
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1066,7 +1066,7 @@ function generateFormComponent(pageName, fields) {
             minLength="8"
             autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1081,7 +1081,7 @@ function generateFormComponent(pageName, fields) {
             ${field.max !== undefined ? `max="${field.max}"` : ''}
             ${field.step ? `step="${field.step}"` : ''}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
           break;
 
@@ -1094,7 +1094,7 @@ function generateFormComponent(pageName, fields) {
               className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
               ${required ? 'required' : ''}
               onChange={handleChange}
-              checked={values.${f.name}}
+              checked={values.${field.name}}
             />
             <label htmlFor="${id}" className="text-sm font-medium">${field.label || ''}</label>
           </div>`;
@@ -1110,7 +1110,7 @@ function generateFormComponent(pageName, fields) {
             ${placeholder}
             ${validationAttrs}
             onChange={handleChange}
-            value={values.${f.name}}
+            value={values.${field.name}}
           />`;
       }
 
@@ -1321,36 +1321,12 @@ function generateFormComponent(pageName, fields) {
      }
    }
 
-      const sanitizedData = Object.fromEntries(
-        Object.entries(values).map(([k, v]) => [k, sanitizeInput(k, v)])
-      );
-
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-      const config = {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrfToken && { 'X-CSRF-Token': csrfToken })
-        }
-      };
-
-      const response = await api.post("/${pageName.toLowerCase()}", sanitizedData, config);
-      toast.success("Item created successfully!");
-      setValues({${resetValues}});
-      if (onSuccess) onSuccess();
-    } catch (err) {
-      const errorMsg = err?.response?.data?.message || err?.message || "Failed to create";
-      toast.error(errorMsg);
-      if (process.env.NODE_ENV === 'development') console.error("Form error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
    return (
      <form onSubmit={handleSubmit} className="space-y-4">
  ${fieldInputs}
        ${fields.filter(f => f.type === "hidden").map(f => `      <input type="hidden" name="${f.name}" value={values.${f.name}} />`).join('\n')}
-       ${editing ? `
+       {editing ? 
        <div className="pt-2 flex gap-2">
          <Button type="submit" disabled={loading}>
            {loading ? "Saving..." : "Update ${pageName}"}
@@ -1361,12 +1337,12 @@ function generateFormComponent(pageName, fields) {
          <Button type="button" variant="outline" onClick={() => { setEditing(false); setValues({${resetValues}}); }}>
            Cancel
          </Button>
-       </div>` : `
+       </div> : 
        <div className="pt-2">
          <Button type="submit" disabled={loading}>
            {loading ? "Creating..." : "Create ${pageName}"}
          </Button>
-       </div>`}
+       </div>}
      </form>
    );
  }
