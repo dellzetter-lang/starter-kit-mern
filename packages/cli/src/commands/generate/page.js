@@ -285,133 +285,455 @@ function generatePageComponent(pageName, routeName, formFields, formMode = "page
   const pageImports = formFields.length ?
     `import { ${formComponentName} } from "./components/${formComponentName}";\n` : "";
   
-  if (formMode === "modal") {
-    const modalImports = `import { useState } from "react";\nimport { PageWrapper } from "@/components/layout/PageWrapper";\nimport { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";\nimport { Button } from "@/components/ui/button";\n${pageImports}`;
+   if (formMode === "modal") {
+     const modalImports = `import { useState } from "react";
+ import { toast } from "sonner";
+ import { PageWrapper } from "@/components/layout/PageWrapper";
+ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+ import { Button } from "@/components/ui/button";
+ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+ import { api } from "@/api/axiosInstance";
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+ ${pageImports}`;
 
-    return `${modalImports}export default function ${pageName}Page() {
-  const [showForm, setShowForm] = useState(false);
+     const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
+     const tableHeaders = displayFields.map(f => 
+       `        <TableHead>${f.label || f.name.charAt(0).toUpperCase() + f.name.slice(1)}</TableHead>`
+     ).join('\n');
+     const tableCells = displayFields.map(f => 
+       '                  <TableCell>{String(item.' + f.name + ' || "")}</TableCell>'
+     ).join('\n');
 
-  return (
-    <PageWrapper className="space-y-6">
-      <section>
-        <h1 className="text-3xl font-semibold">${pageName}</h1>
-        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-      </section>
+     const dropdownActions = `          <DropdownMenu>
+             <DropdownMenuTrigger asChild>
+               <Button variant="ghost" size="icon">
+                 <MoreHorizontal className="h-4 w-4" />
+               </Button>
+             </DropdownMenuTrigger>
+             <DropdownMenuContent align="end">
+               <DropdownMenuItem onClick={() => handleEdit(item)}>
+                 <Pencil className="mr-2 h-4 w-4" />
+                 Edit
+               </DropdownMenuItem>
+               <DropdownMenuItem onClick={() => handleDelete(item._id || item.id)} className="text-destructive">
+                 <Trash2 className="mr-2 h-4 w-4" />
+                 Delete
+               </DropdownMenuItem>
+             </DropdownMenuContent>
+           </DropdownMenu>`;
 
-      <section>
-        <Button onClick={() => setShowForm(true)}>Add New ${singularName}</Button>
-      </section>
+     return `${modalImports}export default function ${pageName}Page() {
+   const queryClient = useQueryClient();
+   const [showForm, setShowForm] = useState(false);
+   const [editingId, setEditingId] = useState(null);
 
-      <section className="bg-card p-6 rounded-lg border">
-        <h2 className="text-xl font-medium mb-4">All Items</h2>
-        <p className="text-muted-foreground">No items yet. Click "Add New ${singularName}" to get started.</p>
-      </section>
+   // Fetch items
+   const { data: itemsData, isLoading } = useQuery({
+     queryKey: ["${pageName.toLowerCase()}"],
+     queryFn: async () => {
+       const { data } = await api.get("/${pageName.toLowerCase()}");
+       return data?.data || [];
+     },
+   });
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create ${singularName}</DialogTitle>
-            <DialogDescription>Fill in the details below.</DialogDescription>
-          </DialogHeader>
-          <${formComponentName} onSuccess={() => setShowForm(false)} />
-        </DialogContent>
-      </Dialog>
-    </PageWrapper>
-  );
-}
-`;
-  }
+   // Delete mutation
+   const deleteMutation = useMutation({
+     mutationFn: async (id) => {
+       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+     },
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+       toast.success("${singularName} deleted successfully");
+     },
+   });
+
+   const handleEdit = (item) => {
+     setEditingId(item._id || item.id);
+     setShowForm(true);
+   };
+
+   const handleDelete = (id) => {
+     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
+       deleteMutation.mutate(id);
+     }
+   };
+
+   const handleSuccess = () => {
+     setShowForm(false);
+     setEditingId(null);
+     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+   };
+
+   return (
+     <PageWrapper className="space-y-6">
+       <section>
+         <h1 className="text-3xl font-semibold">${pageName}</h1>
+         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+       </section>
+
+       <section>
+         <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
+           Add New ${singularName}
+         </Button>
+       </section>
+
+       <section className="bg-card p-6 rounded-lg border">
+         <h2 className="text-xl font-medium mb-4">All Items</h2>
+         {isLoading ? (
+           <p>Loading...</p>
+         ) : itemsData?.length === 0 ? (
+           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet. Click "Add New ${singularName}" to get started.</p>
+         ) : (
+           <Table>
+             <TableHeader>
+               <TableRow>
+ ${tableHeaders}
+                 <TableHead className="text-right">Actions</TableHead>
+               </TableRow>
+             </TableHeader>
+             <TableBody>
+               {itemsData?.map((item) => (
+                 <TableRow key={item._id || item.id}>
+ ${tableCells}
+                   <TableCell className="text-right">
+                     ${dropdownActions}
+                   </TableCell>
+                 </TableRow>
+               ))}
+             </TableBody>
+           </Table>
+         )}
+       </section>
+
+       <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
+         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+           <DialogHeader>
+             <DialogTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</DialogTitle>
+             <DialogDescription>
+               {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
+             </DialogDescription>
+           </DialogHeader>
+           <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+         </DialogContent>
+       </Dialog>
+     </PageWrapper>
+   );
+ }
+ `;
+   }
   
-  if (formMode === "sidepanel") {
-    const sidepanelImports = `import { useState } from "react";\nimport { PageWrapper } from "@/components/layout/PageWrapper";\nimport { Button } from "@/components/ui/button";\nimport { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";\n${pageImports}`;
+   if (formMode === "sidepanel") {
+     const sidepanelImports = `import { useState } from "react";
+ import { toast } from "sonner";
+ import { PageWrapper } from "@/components/layout/PageWrapper";
+ import { Button } from "@/components/ui/button";
+ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+ import { api } from "@/api/axiosInstance";
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+ ${pageImports}`;
 
-    return `${sidepanelImports}export default function ${pageName}Page() {
-  const [showForm, setShowForm] = useState(false);
+     const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
+     const simpleActions = `                  <div className="flex gap-2">
+                       <Button size="sm" variant="outline" onClick={() => handleEdit(item)}>Edit</Button>
+                       <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>Delete</Button>
+                     </div>`;
 
-  return (
-    <PageWrapper className="space-y-6">
-      <section>
-        <h1 className="text-3xl font-semibold">${pageName}</h1>
-        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-      </section>
+     return `${sidepanelImports}export default function ${pageName}Page() {
+   const queryClient = useQueryClient();
+   const [showForm, setShowForm] = useState(false);
+   const [editingId, setEditingId] = useState(null);
 
-      <section>
-        <Button onClick={() => setShowForm(true)}>Add New ${singularName}</Button>
-      </section>
+   // Fetch items
+   const { data: itemsData, isLoading } = useQuery({
+     queryKey: ["${pageName.toLowerCase()}"],
+     queryFn: async () => {
+       const { data } = await api.get("/${pageName.toLowerCase()}");
+       return data?.data || [];
+     },
+   });
 
-      <section className="bg-card p-6 rounded-lg border">
-        <h2 className="text-xl font-medium mb-4">All Items</h2>
-        <p className="text-muted-foreground">No items yet. Click "Add New ${singularName}" to get started.</p>
-      </section>
+   // Delete mutation
+   const deleteMutation = useMutation({
+     mutationFn: async (id) => {
+       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+     },
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+       toast.success("${singularName} deleted successfully");
+     },
+   });
 
-      <Sheet open={showForm} onOpenChange={setShowForm}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Create ${singularName}</SheetTitle>
-            <SheetDescription>Fill in the details below.</SheetDescription>
-          </SheetHeader>
-          <div className="mt-4">
-            <${formComponentName} onSuccess={() => setShowForm(false)} />
-          </div>
-        </SheetContent>
-      </Sheet>
-    </PageWrapper>
-  );
-}
-`;
-  }
+   const handleEdit = (item) => {
+     setEditingId(item._id || item.id);
+     setShowForm(true);
+   };
+
+   const handleDelete = (id) => {
+     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
+       deleteMutation.mutate(id);
+     }
+   };
+
+   const handleSuccess = () => {
+     setShowForm(false);
+     setEditingId(null);
+     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+   };
+
+   return (
+     <PageWrapper className="space-y-6">
+       <section>
+         <h1 className="text-3xl font-semibold">${pageName}</h1>
+         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+       </section>
+
+       <section>
+         <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
+           Add New ${singularName}
+         </Button>
+       </section>
+
+       <section className="bg-card p-6 rounded-lg border">
+         <h2 className="text-xl font-medium mb-4">All Items</h2>
+         {isLoading ? (
+           <p>Loading...</p>
+         ) : itemsData?.length === 0 ? (
+           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
+         ) : (
+           <div className="space-y-2">
+             {itemsData?.map((item) => (
+               <div key={item._id || item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                 <div>
+                   ${displayFields.map(f => '<span className="font-medium">' + f.label + ':</span> {String(item.' + f.name + ' || "")}').join(' — ')}
+                 </div>
+                 ${simpleActions}
+               </div>
+             ))}
+           </div>
+         )}
+       </section>
+
+       <Sheet open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
+         <SheetContent>
+           <SheetHeader>
+             <SheetTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</SheetTitle>
+             <SheetDescription>
+               {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
+             </SheetDescription>
+           </SheetHeader>
+           <div className="mt-4">
+             <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+           </div>
+         </SheetContent>
+       </Sheet>
+     </PageWrapper>
+   );
+ }
+ `;
+   }
   
-  if (formMode === "inline") {
-    const inlineImports = `import { PageWrapper } from "@/components/layout/PageWrapper";\nimport { ${formComponentName} } from "./components/${formComponentName}";\n`;
+   if (formMode === "inline") {
+     const inlineImports = `import { useState } from "react";
+ import { toast } from "sonner";
+ import { PageWrapper } from "@/components/layout/PageWrapper";
+ import { Button } from "@/components/ui/button";
+ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+ import { api } from "@/api/axiosInstance";
+ import { ${formComponentName} } from "./components/${formComponentName}";
+ ${pageImports}`;
 
-    return `${inlineImports}export default function ${pageName}Page() {
-  return (
-    <PageWrapper className="space-y-6">
-      <section>
-        <h1 className="text-3xl font-semibold">${pageName}</h1>
-        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-      </section>
+     const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
 
-      <section className="bg-card p-6 rounded-lg border">
-        <h2 className="text-xl font-medium mb-4">Create New</h2>
-        <${formComponentName} />
-      </section>
-    </PageWrapper>
-  );
-}
-`;
-  }
+     return `${inlineImports}export default function ${pageName}Page() {
+   const queryClient = useQueryClient();
+   const [editingId, setEditingId] = useState(null);
+
+   // Fetch items
+   const { data: itemsData, isLoading } = useQuery({
+     queryKey: ["${pageName.toLowerCase()}"],
+     queryFn: async () => {
+       const { data } = await api.get("/${pageName.toLowerCase()}");
+       return data?.data || [];
+     },
+   });
+
+   // Delete mutation
+   const deleteMutation = useMutation({
+     mutationFn: async (id) => {
+       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+     },
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+       toast.success("${singularName} deleted successfully");
+     },
+   });
+
+   const handleDelete = (id) => {
+     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
+       deleteMutation.mutate(id);
+     }
+   };
+
+   const handleSuccess = () => {
+     setEditingId(null);
+     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+   };
+
+   return (
+     <PageWrapper className="space-y-6">
+       <section>
+         <h1 className="text-3xl font-semibold">${pageName}</h1>
+         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+       </section>
+
+       <section className="bg-card p-6 rounded-lg border">
+         <h2 className="text-xl font-medium mb-4">Create New</h2>
+         <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+       </section>
+
+       <section className="bg-card p-6 rounded-lg border">
+         <h2 className="text-xl font-medium mb-4">All Items</h2>
+         {isLoading ? (
+           <p>Loading...</p>
+         ) : itemsData?.length === 0 ? (
+           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
+         ) : (
+           <div className="space-y-2">
+             {itemsData?.map((item) => (
+               <div key={item._id || item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                 <div>
+                   ${displayFields.length ? displayFields.map(f => '<span className="font-medium">' + f.label + ':</span> {String(item.' + f.name + ' || "")}').join(' — ') : item._id || item.id}
+                 </div>
+                 <div className="flex gap-2">
+                   <Button size="sm" variant="outline" onClick={() => { setEditingId(item._id || item.id); }}>
+                     Edit
+                   </Button>
+                   <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>
+                     Delete
+                   </Button>
+                 </div>
+               </div>
+             ))}
+           </div>
+         )}
+       </section>
+     </PageWrapper>
+   );
+ }
+ `;
+   }
   
-  // Default: page mode (form embedded in page)
-  const formElement = formFields.length ? `<${formComponentName} />` : "/* Form goes here */";
-  
-  return `import { useAuth } from "@/hooks/useAuth";
-import { ROUTES } from "@/utils/constants";
-import { PageWrapper } from "@/components/layout/PageWrapper";
-${pageImports}export default function ${pageName}Page() {
-  const { user } = useAuth();
+   // Default: page mode (form embedded with full table)
+   const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
+   const tableHeaders = displayFields.map(f => 
+     `        <TableHead>${f.label || f.name.charAt(0).toUpperCase() + f.name.slice(1)}</TableHead>`
+   ).join('\n');
+   const tableCells = displayFields.map(f => 
+     '                  <TableCell>{String(item.' + f.name + ' || "")}</TableCell>'
+   ).join('\n');
 
-  return (
-    <PageWrapper className="space-y-6">
-      <section>
-        <h1 className="text-3xl font-semibold">${pageName}</h1>
-        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-      </section>
+   return `import { useState } from "react";
+ import { toast } from "sonner";
+ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+ import { api } from "@/api/axiosInstance";
+ import { useAuth } from "@/hooks/useAuth";
+ import { ROUTES } from "@/utils/constants";
+ import { PageWrapper } from "@/components/layout/PageWrapper";
+ import { Button } from "@/components/ui/button";
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+ ${pageImports}export default function ${pageName}Page() {
+   const queryClient = useQueryClient();
+   const { user } = useAuth();
+   const [editingId, setEditingId] = useState(null);
 
-      <section className="bg-card p-6 rounded-lg border">
-        <h2 className="text-xl font-medium mb-4">Create New</h2>
-        ${formElement}
-      </section>
-      
-      <section className="bg-card p-6 rounded-lg border">
-        <h2 className="text-xl font-medium mb-4">All Items</h2>
-        <p className="text-muted-foreground">No items yet.</p>
-      </section>
-    </PageWrapper>
-  );
-}
-`;
-}
+   // Fetch items
+   const { data: itemsData, isLoading } = useQuery({
+     queryKey: ["${pageName.toLowerCase()}"],
+     queryFn: async () => {
+       const { data } = await api.get("/${pageName.toLowerCase()}");
+       return data?.data || [];
+     },
+   });
+
+   // Delete mutation
+   const deleteMutation = useMutation({
+     mutationFn: async (id) => {
+       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+     },
+     onSuccess: () => {
+       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+       toast.success("${singularName} deleted successfully");
+     },
+   });
+
+   const handleDelete = (id) => {
+     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
+       deleteMutation.mutate(id);
+     }
+   };
+
+   const handleSuccess = () => {
+     setEditingId(null);
+     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
+   };
+
+   return (
+     <PageWrapper className="space-y-6">
+       <section>
+         <h1 className="text-3xl font-semibold">${pageName}</h1>
+         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+       </section>
+
+       <section className="bg-card p-6 rounded-lg border">
+         <h2 className="text-xl font-medium mb-4">Create New</h2>
+         <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+       </section>
+       
+       <section className="bg-card p-6 rounded-lg border">
+         <h2 className="text-xl font-medium mb-4">All Items</h2>
+         {isLoading ? (
+           <p>Loading...</p>
+         ) : itemsData?.length === 0 ? (
+           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
+         ) : (
+           <Table>
+             <TableHeader>
+               <TableRow>
+ ${tableHeaders}
+                 <TableHead className="text-right">Actions</TableHead>
+               </TableRow>
+             </TableHeader>
+             <TableBody>
+               {itemsData?.map((item) => (
+                 <TableRow key={item._id || item.id}>
+ ${tableCells}
+                   <TableCell className="text-right">
+                     <div className="flex gap-2 justify-end">
+                       <Button size="sm" variant="outline" onClick={() => setEditingId(item._id || item.id)}>
+                         Edit
+                       </Button>
+                       <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>
+                         Delete
+                       </Button>
+                     </div>
+                   </TableCell>
+                 </TableRow>
+               ))}
+             </TableBody>
+           </Table>
+         )}
+       </section>
+     </PageWrapper>
+   );
+ }
+ `;
+ }
 
 export function generateDashboardPage(pageName, modules = []) {
   const hasModules = modules.length > 0;
@@ -568,41 +890,47 @@ function generateFormComponent(pageName, fields) {
 
      let inputElement;
      switch (field.type) {
-       case "textarea":
-         inputElement = `<textarea
-           id="${id}"
-           name="${id}"
-           rows={3}
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${placeholder}
-           ${validationAttrs}
-         />`;
-         break;
+        case "textarea":
+          inputElement = `<textarea
+            id="${id}"
+            name="${id}"
+            rows={3}
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${placeholder}
+            ${validationAttrs}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "select":
-         inputElement = `<select
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-         >
-           <option value="">Select...</option>
-           {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
-         </select>`;
-         break;
+        case "select":
+          inputElement = `<select
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            onChange={handleChange}
+            value={values.${f.name}}
+          >
+            <option value="">Select...</option>
+            {field.options?.map(opt => '<option value="' + (opt.value || opt) + '">' + (opt.label || opt) + '</option>').join("\\n          ") || ""}
+          </select>`;
+          break;
 
-       case "color":
-         inputElement = `<div className="flex items-center gap-2">
-           <input
-             type="color"
-             id="${id}"
-             name="${id}"
-             className="h-10 w-20 rounded-md border cursor-pointer"
-           />
-           <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
-         </div>`;
-         break;
+        case "color":
+          inputElement = `<div className="flex items-center gap-2">
+            <input
+              type="color"
+              id="${id}"
+              name="${id}"
+              className="h-10 w-20 rounded-md border cursor-pointer"
+              onChange={handleChange}
+              value={values.${f.name}}
+            />
+            <input type="text" readOnly value="#000000" className="flex-1 rounded-md border px-3 py-2 text-sm bg-muted" />
+          </div>`;
+          break;
 
        case "file":
          inputElement = `<input
@@ -615,151 +943,175 @@ function generateFormComponent(pageName, fields) {
          />`;
          break;
 
-       case "range":
-         inputElement = `<div className="space-y-2">
-           <div className="flex justify-between text-xs">
-             <span>${field.min || 0}</span>
-             <span id="${id}-display" className="font-medium">${field.defaultValue || Math.round((field.min || 0) + (field.max || 100) / 2)}</span>
-             <span>${field.max || 100}</span>
-           </div>
-           <input
-             type="range"
-             id="${id}"
-             name="${id}"
-             min="${field.min || 0}"
-             max="${field.max || 100}"
-             step="${field.step || 1}"
-             className="w-full accent-primary"
-             onChange={(e) => document.getElementById('${id}-display').textContent = e.target.value}
-           />
-         </div>`;
-         break;
+        case "range":
+          inputElement = `<div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span>${field.min || 0}</span>
+              <span id="${id}-display" className="font-medium">${field.defaultValue || Math.round((field.min || 0) + (field.max || 100) / 2)}</span>
+              <span>${field.max || 100}</span>
+            </div>
+            <input
+              type="range"
+              id="${id}"
+              name="${id}"
+              min="${field.min || 0}"
+              max="${field.max || 100}"
+              step="${field.step || 1}"
+              className="w-full accent-primary"
+              onChange={(e) => {
+                handleChange(e);
+                document.getElementById('${id}-display').textContent = e.target.value;
+              }}
+              value={values.${f.name}}
+            />
+          </div>`;
+          break;
 
-       case "hidden":
-         inputElement = `<input type="hidden" id="${id}" name="${id}" value="${field.defaultValue || ''}" />`;
-         break;
+        case "hidden":
+          inputElement = `<input type="hidden" id="${id}" name="${id}" value={values.${f.name}} />`;
+          break;
 
-       case "date":
-         inputElement = `<input
-           type="date"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${field.min ? `min="${field.min}"` : ''}
-           ${field.max ? `max="${field.max}"` : ''}
-         />`;
-         break;
+        case "date":
+          inputElement = `<input
+            type="date"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${field.min ? `min="${field.min}"` : ''}
+            ${field.max ? `max="${field.max}"` : ''}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "time":
-         inputElement = `<input
-           type="time"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-         />`;
-         break;
+        case "time":
+          inputElement = `<input
+            type="time"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "datetime-local":
-         inputElement = `<input
-           type="datetime-local"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${field.min ? `min="${field.min}"` : ''}
-           ${field.max ? `max="${field.max}"` : ''}
-         />`;
-         break;
+        case "datetime-local":
+          inputElement = `<input
+            type="datetime-local"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${field.min ? `min="${field.min}"` : ''}
+            ${field.max ? `max="${field.max}"` : ''}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "tel":
-         inputElement = `<input
-           type="tel"
-           id="${id}"
-           name="${id}"
-           inputMode="tel"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${placeholder}
-           pattern="^[+]?[1-9]\\d{1,14}$"
-           title="E.164 format: +[country code][number]"
-         />`;
-         break;
+        case "tel":
+          inputElement = `<input
+            type="tel"
+            id="${id}"
+            name="${id}"
+            inputMode="tel"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${placeholder}
+            pattern="^[+]?[1-9]\\d{1,14}$"
+            title="E.164 format: +[country code][number]"
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "url":
-         inputElement = `<input
-           type="url"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${placeholder}
-         />`;
-         break;
+        case "url":
+          inputElement = `<input
+            type="url"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${placeholder}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "email":
-         inputElement = `<input
-           type="email"
-           id="${id}"
-           name="${id}"
-           inputMode="email"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${placeholder}
-           autoComplete="email"
-         />`;
-         break;
+        case "email":
+          inputElement = `<input
+            type="email"
+            id="${id}"
+            name="${id}"
+            inputMode="email"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${placeholder}
+            autoComplete="email"
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "password":
-         inputElement = `<input
-           type="password"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           minLength="8"
-           autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
-         />`;
-         break;
+        case "password":
+          inputElement = `<input
+            type="password"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            minLength="8"
+            autoComplete="${field.name.toLowerCase().includes('current') ? 'current-password' : 'new-password'}"
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "number":
-         inputElement = `<input
-           type="number"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${field.min !== undefined ? `min="${field.min}"` : ''}
-           ${field.max !== undefined ? `max="${field.max}"` : ''}
-           ${field.step ? `step="${field.step}"` : ''}
-         />`;
-         break;
+        case "number":
+          inputElement = `<input
+            type="number"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${field.min !== undefined ? `min="${field.min}"` : ''}
+            ${field.max !== undefined ? `max="${field.max}"` : ''}
+            ${field.step ? `step="${field.step}"` : ''}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+          break;
 
-       case "boolean":
-         inputElement = `<div className="flex items-center space-x-2">
-           <input
-             type="checkbox"
-             id="${id}"
-             name="${id}"
-             className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
-             ${required ? 'required' : ''}
-           />
-           <label htmlFor="${id}" className="text-sm font-medium">${field.label || ''}</label>
-         </div>`;
-         break;
+        case "boolean":
+          inputElement = `<div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="${id}"
+              name="${id}"
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+              ${required ? 'required' : ''}
+              onChange={handleChange}
+              checked={values.${f.name}}
+            />
+            <label htmlFor="${id}" className="text-sm font-medium">${field.label || ''}</label>
+          </div>`;
+          break;
 
-       default:
-         inputElement = `<input
-           type="text"
-           id="${id}"
-           name="${id}"
-           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-           ${required}
-           ${placeholder}
-           ${validationAttrs}
-         />`;
-     }
+        default:
+          inputElement = `<input
+            type="text"
+            id="${id}"
+            name="${id}"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            ${required}
+            ${placeholder}
+            ${validationAttrs}
+            onChange={handleChange}
+            value={values.${f.name}}
+          />`;
+      }
 
     return `      <div key="${id}" className="space-y-2">
         <label htmlFor="${id}" className="block text-sm font-medium">
@@ -853,21 +1205,41 @@ function generateFormComponent(pageName, fields) {
     return `${f.name}: ${f.type === "boolean" ? false : f.type === "number" || f.type === "range" ? 0 : '""'}`;
   }).join(", ");
 
-  return `import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { api } from "@/api/axiosInstance";
-${sanitizationImports}export function ${pageName}Form({ onSuccess } = {}) {
-  const [loading, setLoading] = useState(false);
-  const [values, setValues] = useState({
-${formFieldsObject}
-  });
+   return `import { useState, useEffect } from "react";
+ import { toast } from "sonner";
+ import { Button } from "@/components/ui/button";
+ import { api } from "@/api/axiosInstance";
+ ${sanitizationImports}export function ${pageName}Form({ onSuccess, editId = null } = {}) {
+   const [loading, setLoading] = useState(false);
+   const [editing, setEditing] = useState(false);
+   const [values, setValues] = useState({
+ ${formFieldsObject}
+   });
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    const val = type === 'checkbox' ? checked : value;
-    setValues((prev) => ({ ...prev, [name]: val }));
-  };
+   // Load existing data when editing
+   useEffect(() => {
+     if (editId) {
+       setEditing(true);
+       const fetchData = async () => {
+         try {
+           const { data } = await api.get(\`/${pageName.toLowerCase()}/\${editId}\`);
+           if (data?.data) {
+             setValues(prev => ({ ...prev, ...data.data }));
+           }
+         } catch (err) {
+           toast.error("Failed to load item");
+           console.error(err);
+         }
+       };
+       fetchData();
+     }
+   }, [editId]);
+
+   const handleChange = (e) => {
+     const { name, value, type, checked } = e.target;
+     const val = type === 'checkbox' ? checked : value;
+     setValues((prev) => ({ ...prev, [name]: val }));
+   };
 
   const sanitizeInput = (key, value) => {
     switch (key) {
@@ -884,17 +1256,69 @@ ${formFieldsObject}
     return errors;
   };
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setLoading(true);
+   async function handleSubmit(e) {
+     e.preventDefault();
+     setLoading(true);
 
-    try {
-      const errors = validateForm();
-      if (errors.length > 0) {
-        errors.forEach(err => toast.error(err));
-        setLoading(false);
-        return;
-      }
+     try {
+       const errors = validateForm();
+       if (errors.length > 0) {
+         errors.forEach(err => toast.error(err));
+         setLoading(false);
+         return;
+       }
+
+       const sanitizedData = Object.fromEntries(
+         Object.entries(values).map(([k, v]) => [k, sanitizeInput(k, v)])
+       );
+
+       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+       const config = {
+         headers: {
+           'Content-Type': 'application/json',
+           ...(csrfToken && { 'X-CSRF-Token': csrfToken })
+         }
+       };
+
+       if (editing && editId) {
+         await api.put(\`/${pageName.toLowerCase()}/\${editId}\`, sanitizedData, config);
+         toast.success("Item updated successfully!");
+       } else {
+         await api.post(\`/${pageName.toLowerCase()}\`, sanitizedData, config);
+         toast.success("Item created successfully!");
+       }
+       
+       setValues({${resetValues}});
+       setEditing(false);
+       if (onSuccess) onSuccess();
+     } catch (err) {
+       const errorMsg = err?.response?.data?.message || err?.message || "Failed to save";
+       toast.error(errorMsg);
+       if (process.env.NODE_ENV === 'development') console.error("Form error:", err);
+     } finally {
+       setLoading(false);
+     }
+   }
+
+   async function handleDelete() {
+     if (!editId) return;
+     
+     if (!confirm("Are you sure you want to delete this item?")) return;
+     
+     setLoading(true);
+     try {
+       await api.delete(\`/${pageName.toLowerCase()}/\${editId}\`);
+       toast.success("Item deleted successfully!");
+       setValues({${resetValues}});
+       setEditing(false);
+       if (onSuccess) onSuccess();
+     } catch (err) {
+       const errorMsg = err?.response?.data?.message || err?.message || "Failed to delete";
+       toast.error(errorMsg);
+     } finally {
+       setLoading(false);
+     }
+   }
 
       const sanitizedData = Object.fromEntries(
         Object.entries(values).map(([k, v]) => [k, sanitizeInput(k, v)])
@@ -921,20 +1345,32 @@ ${formFieldsObject}
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-${fieldInputs}
-      ${fields.filter(f => f.type === "hidden").map(f => `      <input type="hidden" name="${f.name}" value="${f.defaultValue || ''}" />`).join('\n')}
-      <div className="pt-2">
-        <Button type="submit" disabled={loading}>
-          {loading ? "Creating..." : "Create ${pageName}"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-`;
-}
+   return (
+     <form onSubmit={handleSubmit} className="space-y-4">
+ ${fieldInputs}
+       ${fields.filter(f => f.type === "hidden").map(f => `      <input type="hidden" name="${f.name}" value={values.${f.name}} />`).join('\n')}
+       ${editing ? `
+       <div className="pt-2 flex gap-2">
+         <Button type="submit" disabled={loading}>
+           {loading ? "Saving..." : "Update ${pageName}"}
+         </Button>
+         <Button type="button" variant="destructive" onClick={handleDelete} disabled={loading}>
+           {loading ? "Deleting..." : "Delete"}
+         </Button>
+         <Button type="button" variant="outline" onClick={() => { setEditing(false); setValues({${resetValues}}); }}>
+           Cancel
+         </Button>
+       </div>` : `
+       <div className="pt-2">
+         <Button type="submit" disabled={loading}>
+           {loading ? "Creating..." : "Create ${pageName}"}
+         </Button>
+       </div>`}
+     </form>
+   );
+ }
+ `;
+ }
 
 async function updateRouter(routerPath, pageName, name, customRoute, spinner) {
   let routerCode = await fs.readFile(routerPath, "utf-8");
