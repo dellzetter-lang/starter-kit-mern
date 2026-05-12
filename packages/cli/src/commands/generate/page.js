@@ -870,7 +870,7 @@ export default function ${pageName}Page() {
 }
 
 function generateFormComponent(pageName, fields) {
-  const fieldInputs = fields.map((field) => {
+   const fieldInputs = fields.filter(f => f.type !== 'hidden').map((field) => {
     const id = field.name.toLowerCase();
     const label = field.label || field.name.charAt(0).toUpperCase() + field.name.slice(1);
     const required = field.required ? "required" : "";
