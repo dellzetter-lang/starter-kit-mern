@@ -284,458 +284,466 @@ function generatePageComponent(pageName, routeName, formFields, formMode = "page
 
   const pageImports = formFields.length ?
     `import { ${formComponentName} } from "./components/${formComponentName}";\n` : "";
-  
-   if (formMode === "modal") {
-     const modalImports = `import { useState } from "react";
- import { toast } from "sonner";
- import { PageWrapper } from "@/components/layout/PageWrapper";
- import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
- import { Button } from "@/components/ui/button";
- import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
- import { api } from "@/api/axiosInstance";
- import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
- import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
- import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
- ${pageImports}`;
 
-     const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
-     const tableHeaders = displayFields.map(f => 
-       `        <TableHead>${f.label || f.name.charAt(0).toUpperCase() + f.name.slice(1)}</TableHead>`
-     ).join('\n');
-     const tableCells = displayFields.map(f => 
-       '                  <TableCell>{String(item.' + f.name + ' || "")}</TableCell>'
-     ).join('\n');
+  // Helper data for table and list
+  const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
+  const tableHeaders = displayFields.map(f => 
+    `        <TableHead>${f.label || f.name.charAt(0).toUpperCase() + f.name.slice(1)}</TableHead>`
+  ).join('\n');
+  const tableCells = displayFields.map(f => 
+    '                  <TableCell>{String(item.' + f.name + ' || "")}</TableCell>'
+  ).join('\n');
 
-     const dropdownActions = `          <DropdownMenu>
-             <DropdownMenuTrigger asChild>
-               <Button variant="ghost" size="icon">
-                 <MoreHorizontal className="h-4 w-4" />
-               </Button>
-             </DropdownMenuTrigger>
-             <DropdownMenuContent align="end">
-               <DropdownMenuItem onClick={() => handleEdit(item)}>
-                 <Pencil className="mr-2 h-4 w-4" />
-                 Edit
-               </DropdownMenuItem>
-               <DropdownMenuItem onClick={() => handleDelete(item._id || item.id)} className="text-destructive">
-                 <Trash2 className="mr-2 h-4 w-4" />
-                 Delete
-               </DropdownMenuItem>
-             </DropdownMenuContent>
-           </DropdownMenu>`;
+  const dropdownActions = `          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleEdit(item)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDelete(item._id || item.id)} className="text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>`;
 
-     return `${modalImports}export default function ${pageName}Page() {
-   const queryClient = useQueryClient();
-   const [showForm, setShowForm] = useState(false);
-   const [editingId, setEditingId] = useState(null);
+  const simpleActions = `                  <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(item)}>Edit</Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>Delete</Button>
+                      </div>`;
 
-   // Fetch items
-   const { data: itemsData, isLoading } = useQuery({
-     queryKey: ["${pageName.toLowerCase()}"],
-     queryFn: async () => {
-       const { data } = await api.get("/${pageName.toLowerCase()}");
-       return data?.data || [];
-     },
-   });
+  if (formMode === "modal") {
+    const modalImports = `import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { api } from "@/api/axiosInstance";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+${pageImports}`;
 
-   // Delete mutation
-   const deleteMutation = useMutation({
-     mutationFn: async (id) => {
-       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
-     },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-       toast.success("${singularName} deleted successfully");
-     },
-   });
+    return `${modalImports}export default function ${pageName}Page() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
-   const handleEdit = (item) => {
-     setEditingId(item._id || item.id);
-     setShowForm(true);
-   };
+  useEffect(() => {
+    fetchItems();
+  }, []);
 
-   const handleDelete = (id) => {
-     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
-       deleteMutation.mutate(id);
-     }
-   };
+  const fetchItems = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/${pageName.toLowerCase()}");
+      setItems(data?.data || []);
+    } catch (err) {
+      toast.error("Failed to load ${singularName.toLowerCase()}s");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-   const handleSuccess = () => {
-     setShowForm(false);
-     setEditingId(null);
-     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-   };
+  const handleEdit = (item) => {
+    setEditingId(item._id || item.id);
+    setShowForm(true);
+  };
 
-   return (
-     <PageWrapper className="space-y-6">
-       <section>
-         <h1 className="text-3xl font-semibold">${pageName}</h1>
-         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-       </section>
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) return;
+    try {
+      await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+      toast.success("${singularName} deleted successfully");
+      fetchItems();
+    } catch (err) {
+      toast.error("Failed to delete ${singularName.toLowerCase()}");
+    }
+  };
 
-       <section>
-         <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
-           Add New ${singularName}
-         </Button>
-       </section>
+  const handleSuccess = () => {
+    setShowForm(false);
+    setEditingId(null);
+    fetchItems();
+  };
 
-       <section className="bg-card p-6 rounded-lg border">
-         <h2 className="text-xl font-medium mb-4">All Items</h2>
-         {isLoading ? (
-           <p>Loading...</p>
-         ) : itemsData?.length === 0 ? (
-           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet. Click "Add New ${singularName}" to get started.</p>
-         ) : (
-           <Table>
-             <TableHeader>
-               <TableRow>
- ${tableHeaders}
-                 <TableHead className="text-right">Actions</TableHead>
-               </TableRow>
-             </TableHeader>
-             <TableBody>
-               {itemsData?.map((item) => (
-                 <TableRow key={item._id || item.id}>
- ${tableCells}
-                   <TableCell className="text-right">
-                     ${dropdownActions}
-                   </TableCell>
-                 </TableRow>
-               ))}
-             </TableBody>
-           </Table>
-         )}
-       </section>
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
 
-       <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
-         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-           <DialogHeader>
-             <DialogTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</DialogTitle>
-             <DialogDescription>
-               {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
-             </DialogDescription>
-           </DialogHeader>
-           <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
-         </DialogContent>
-       </Dialog>
-     </PageWrapper>
-   );
- }
- `;
-   }
-  
-   if (formMode === "sidepanel") {
-     const sidepanelImports = `import { useState } from "react";
- import { toast } from "sonner";
- import { PageWrapper } from "@/components/layout/PageWrapper";
- import { Button } from "@/components/ui/button";
- import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
- import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
- import { api } from "@/api/axiosInstance";
- import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
- import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
- ${pageImports}`;
+      <section>
+        <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
+          Add New ${singularName}
+        </Button>
+      </section>
 
-     const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
-     const simpleActions = `                  <div className="flex gap-2">
-                       <Button size="sm" variant="outline" onClick={() => handleEdit(item)}>Edit</Button>
-                       <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>Delete</Button>
-                     </div>`;
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        {loading ? (
+          <p>Loading...</p>
+        ) : items.length === 0 ? (
+          <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet. Click "Add New ${singularName}" to get started.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+${tableHeaders}
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={item._id || item.id}>
+${tableCells}
+                  <TableCell className="text-right">
+                    ${dropdownActions}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
 
-     return `${sidepanelImports}export default function ${pageName}Page() {
-   const queryClient = useQueryClient();
-   const [showForm, setShowForm] = useState(false);
-   const [editingId, setEditingId] = useState(null);
+      <Dialog open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</DialogTitle>
+            <DialogDescription>
+              {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
+            </DialogDescription>
+          </DialogHeader>
+          <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+        </DialogContent>
+      </Dialog>
+    </PageWrapper>
+  );
+}
+`;
+  }
 
-   // Fetch items
-   const { data: itemsData, isLoading } = useQuery({
-     queryKey: ["${pageName.toLowerCase()}"],
-     queryFn: async () => {
-       const { data } = await api.get("/${pageName.toLowerCase()}");
-       return data?.data || [];
-     },
-   });
+  if (formMode === "sidepanel") {
+    const sidepanelImports = `import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { api } from "@/api/axiosInstance";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+${pageImports}`;
 
-   // Delete mutation
-   const deleteMutation = useMutation({
-     mutationFn: async (id) => {
-       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
-     },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-       toast.success("${singularName} deleted successfully");
-     },
-   });
+    return `${sidepanelImports}export default function ${pageName}Page() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
-   const handleEdit = (item) => {
-     setEditingId(item._id || item.id);
-     setShowForm(true);
-   };
+  useEffect(() => {
+    fetchItems();
+  }, []);
 
-   const handleDelete = (id) => {
-     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
-       deleteMutation.mutate(id);
-     }
-   };
+  const fetchItems = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/${pageName.toLowerCase()}");
+      setItems(data?.data || []);
+    } catch (err) {
+      toast.error("Failed to load ${singularName.toLowerCase()}s");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-   const handleSuccess = () => {
-     setShowForm(false);
-     setEditingId(null);
-     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-   };
+  const handleEdit = (item) => {
+    setEditingId(item._id || item.id);
+    setShowForm(true);
+  };
 
-   return (
-     <PageWrapper className="space-y-6">
-       <section>
-         <h1 className="text-3xl font-semibold">${pageName}</h1>
-         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-       </section>
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) return;
+    try {
+      await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+      toast.success("${singularName} deleted successfully");
+      fetchItems();
+    } catch (err) {
+      toast.error("Failed to delete ${singularName.toLowerCase()}");
+    }
+  };
 
-       <section>
-         <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
-           Add New ${singularName}
-         </Button>
-       </section>
+  const handleSuccess = () => {
+    setShowForm(false);
+    setEditingId(null);
+    fetchItems();
+  };
 
-       <section className="bg-card p-6 rounded-lg border">
-         <h2 className="text-xl font-medium mb-4">All Items</h2>
-         {isLoading ? (
-           <p>Loading...</p>
-         ) : itemsData?.length === 0 ? (
-           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
-         ) : (
-           <div className="space-y-2">
-             {itemsData?.map((item) => (
-               <div key={item._id || item.id} className="flex items-center justify-between p-3 border rounded-lg">
-                 <div>
-                   ${displayFields.map(f => '<span className="font-medium">' + f.label + ':</span> {String(item.' + f.name + ' || "")}').join(' — ')}
-                 </div>
-                 ${simpleActions}
-               </div>
-             ))}
-           </div>
-         )}
-       </section>
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
 
-       <Sheet open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
-         <SheetContent>
-            <SheetHeader>
-              <SheetTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</SheetTitle>
-              <SheetDescription>
-                {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
-              </SheetDescription>
-            </SheetHeader>
-           <div className="mt-4">
-             <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
-           </div>
-         </SheetContent>
-       </Sheet>
-     </PageWrapper>
-   );
- }
- `;
-   }
-  
-   if (formMode === "inline") {
-     const inlineImports = `import { useState } from "react";
- import { toast } from "sonner";
- import { PageWrapper } from "@/components/layout/PageWrapper";
- import { Button } from "@/components/ui/button";
- import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
- import { api } from "@/api/axiosInstance";
- import { ${formComponentName} } from "./components/${formComponentName}";
- ${pageImports}`;
+      <section>
+        <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
+          Add New ${singularName}
+        </Button>
+      </section>
 
-     const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        {loading ? (
+          <p>Loading...</p>
+        ) : items.length === 0 ? (
+          <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <div key={item._id || item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  ${displayFields.length ? displayFields.map(f => '<span className="font-medium">' + f.label + ':</span> {String(item.' + f.name + ' || "")}').join(' — ') : item._id || item.id}
+                </div>
+                ${simpleActions}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-     return `${inlineImports}export default function ${pageName}Page() {
-   const queryClient = useQueryClient();
-   const [editingId, setEditingId] = useState(null);
+      <Sheet open={showForm} onOpenChange={(open) => { setShowForm(open); if (!open) setEditingId(null); }}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>{editingId ? "Edit ${singularName}" : "Create ${singularName}"}</SheetTitle>
+            <SheetDescription>
+              {editingId ? "Update the details below." : "Fill in the details below to create a new ${singularName.toLowerCase()}."}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </PageWrapper>
+  );
+}
+`;
+  }
 
-   // Fetch items
-   const { data: itemsData, isLoading } = useQuery({
-     queryKey: ["${pageName.toLowerCase()}"],
-     queryFn: async () => {
-       const { data } = await api.get("/${pageName.toLowerCase()}");
-       return data?.data || [];
-     },
-   });
+  if (formMode === "inline") {
+    const inlineImports = `import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { Button } from "@/components/ui/button";
+import { api } from "@/api/axiosInstance";
+${pageImports}`;
 
-   // Delete mutation
-   const deleteMutation = useMutation({
-     mutationFn: async (id) => {
-       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
-     },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-       toast.success("${singularName} deleted successfully");
-     },
-   });
+    return `${inlineImports}export default function ${pageName}Page() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null);
 
-   const handleDelete = (id) => {
-     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
-       deleteMutation.mutate(id);
-     }
-   };
+  useEffect(() => {
+    fetchItems();
+  }, []);
 
-   const handleSuccess = () => {
-     setEditingId(null);
-     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-   };
+  const fetchItems = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/${pageName.toLowerCase()}");
+      setItems(data?.data || []);
+    } catch (err) {
+      toast.error("Failed to load ${singularName.toLowerCase()}s");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-   return (
-     <PageWrapper className="space-y-6">
-       <section>
-         <h1 className="text-3xl font-semibold">${pageName}</h1>
-         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-       </section>
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) return;
+    try {
+      await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+      toast.success("${singularName} deleted successfully");
+      fetchItems();
+    } catch (err) {
+      toast.error("Failed to delete ${singularName.toLowerCase()}");
+    }
+  };
 
-       <section className="bg-card p-6 rounded-lg border">
-         <h2 className="text-xl font-medium mb-4">Create New</h2>
-         <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
-       </section>
+  const handleSuccess = () => {
+    setEditingId(null);
+    fetchItems();
+  };
 
-       <section className="bg-card p-6 rounded-lg border">
-         <h2 className="text-xl font-medium mb-4">All Items</h2>
-         {isLoading ? (
-           <p>Loading...</p>
-         ) : itemsData?.length === 0 ? (
-           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
-         ) : (
-           <div className="space-y-2">
-             {itemsData?.map((item) => (
-               <div key={item._id || item.id} className="flex items-center justify-between p-3 border rounded-lg">
-                 <div>
-                   ${displayFields.length ? displayFields.map(f => '<span className="font-medium">' + f.label + ':</span> {String(item.' + f.name + ' || "")}').join(' — ') : item._id || item.id}
-                 </div>
-                 <div className="flex gap-2">
-                   <Button size="sm" variant="outline" onClick={() => { setEditingId(item._id || item.id); }}>
-                     Edit
-                   </Button>
-                   <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>
-                     Delete
-                   </Button>
-                 </div>
-               </div>
-             ))}
-           </div>
-         )}
-       </section>
-     </PageWrapper>
-   );
- }
- `;
-   }
-  
-   // Default: page mode (form embedded with full table)
-   const displayFields = formFields.filter(f => !['file', 'hidden', 'password'].includes(f.type));
-   const tableHeaders = displayFields.map(f => 
-     `        <TableHead>${f.label || f.name.charAt(0).toUpperCase() + f.name.slice(1)}</TableHead>`
-   ).join('\n');
-   const tableCells = displayFields.map(f => 
-     '                  <TableCell>{String(item.' + f.name + ' || "")}</TableCell>'
-   ).join('\n');
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
 
-   return `import { useState } from "react";
- import { toast } from "sonner";
- import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
- import { api } from "@/api/axiosInstance";
- import { useAuth } from "@/hooks/useAuth";
- import { ROUTES } from "@/utils/constants";
- import { PageWrapper } from "@/components/layout/PageWrapper";
- import { Button } from "@/components/ui/button";
- import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
- import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
- import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
- ${pageImports}export default function ${pageName}Page() {
-   const queryClient = useQueryClient();
-   const { user } = useAuth();
-   const [editingId, setEditingId] = useState(null);
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">Create New</h2>
+        <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+      </section>
 
-   // Fetch items
-   const { data: itemsData, isLoading } = useQuery({
-     queryKey: ["${pageName.toLowerCase()}"],
-     queryFn: async () => {
-       const { data } = await api.get("/${pageName.toLowerCase()}");
-       return data?.data || [];
-     },
-   });
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        {loading ? (
+          <p>Loading...</p>
+        ) : items.length === 0 ? (
+          <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <div key={item._id || item.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  ${displayFields.length ? displayFields.map(f => '<span className="font-medium">' + f.label + ':</span> {String(item.' + f.name + ' || "")}').join(' — ') : item._id || item.id}
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => { setEditingId(item._id || item.id); }}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </PageWrapper>
+  );
+}
+`;
+  }
 
-   // Delete mutation
-   const deleteMutation = useMutation({
-     mutationFn: async (id) => {
-       await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
-     },
-     onSuccess: () => {
-       queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-       toast.success("${singularName} deleted successfully");
-     },
-   });
+  // Default: page mode
+  const pageImportsWithEffects = pageImports ? 
+    `import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { api } from "@/api/axiosInstance";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+${pageImports}` :
+    `import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { api } from "@/api/axiosInstance";
+import { useAuth } from "@/hooks/useAuth";
+import { ROUTES } from "@/utils/constants";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+${pageImports}`;
 
-   const handleDelete = (id) => {
-     if (confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) {
-       deleteMutation.mutate(id);
-     }
-   };
+  return `${pageImportsWithEffects}export default function ${pageName}Page() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null);
+  ${pageImports ? '' : 'const { user } = useAuth();'}
 
-   const handleSuccess = () => {
-     setEditingId(null);
-     queryClient.invalidateQueries({ queryKey: ["${pageName.toLowerCase()}"] });
-   };
+  useEffect(() => {
+    fetchItems();
+  }, []);
 
-   return (
-     <PageWrapper className="space-y-6">
-       <section>
-         <h1 className="text-3xl font-semibold">${pageName}</h1>
-         <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
-       </section>
+  const fetchItems = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/${pageName.toLowerCase()}");
+      setItems(data?.data || []);
+    } catch (err) {
+      toast.error("Failed to load ${singularName.toLowerCase()}s");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-${formFields.length ? `
-       <section className="bg-card p-6 rounded-lg border">
-         <h2 className="text-xl font-medium mb-4">Create New</h2>
-         <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
-       </section>` : ''}
-       
-       <section className="bg-card p-6 rounded-lg border">
-         <h2 className="text-xl font-medium mb-4">All Items</h2>
-         {isLoading ? (
-           <p>Loading...</p>
-         ) : itemsData?.length === 0 ? (
-           <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
-         ) : (
-           <Table>
-             <TableHeader>
-               <TableRow>
- ${tableHeaders}
-                 <TableHead className="text-right">Actions</TableHead>
-               </TableRow>
-             </TableHeader>
-             <TableBody>
-               {itemsData?.map((item) => (
-                 <TableRow key={item._id || item.id}>
- ${tableCells}
-                   <TableCell className="text-right">
-                     <div className="flex gap-2 justify-end">
-                       <Button size="sm" variant="outline" onClick={() => setEditingId(item._id || item.id)}>
-                         Edit
-                       </Button>
-                       <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>
-                         Delete
-                       </Button>
-                     </div>
-                   </TableCell>
-                 </TableRow>
-               ))}
-             </TableBody>
-           </Table>
-         )}
-       </section>
-     </PageWrapper>
-   );
- }
- `;
- }
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this ${singularName.toLowerCase()}?")) return;
+    try {
+      await api.delete(\`/${pageName.toLowerCase()}/\${id}\`);
+      toast.success("${singularName} deleted successfully");
+      fetchItems();
+    } catch (err) {
+      toast.error("Failed to delete ${singularName.toLowerCase()}");
+    }
+  };
 
+  const handleSuccess = () => {
+    setEditingId(null);
+    fetchItems();
+  };
+
+  return (
+    <PageWrapper className="space-y-6">
+      <section>
+        <h1 className="text-3xl font-semibold">${pageName}</h1>
+        <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
+      </section>
+
+      ${formFields.length ? `
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">Create New</h2>
+        <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
+      </section>` : ''}
+
+      <section className="bg-card p-6 rounded-lg border">
+        <h2 className="text-xl font-medium mb-4">All Items</h2>
+        {loading ? (
+          <p>Loading...</p>
+        ) : items.length === 0 ? (
+          <p className="text-muted-foreground">No ${singularName.toLowerCase()}s yet.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+${tableHeaders}
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={item._id || item.id}>
+${tableCells}
+                  <TableCell className="text-right">
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setEditingId(item._id || item.id)}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(item._id || item.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
+    </PageWrapper>
+  );
+}
+`;
+}
 export function generateDashboardPage(pageName, modules = []) {
   const hasModules = modules.length > 0;
   const moduleRefs = modules.map(m => m.name).join(', ');
