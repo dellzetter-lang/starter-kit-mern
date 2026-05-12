@@ -690,10 +690,11 @@ function generatePageComponent(pageName, routeName, formFields, formMode = "page
          <p className="text-muted-foreground">Manage ${routeName.toLowerCase()} here.</p>
        </section>
 
+${formFields.length ? `
        <section className="bg-card p-6 rounded-lg border">
          <h2 className="text-xl font-medium mb-4">Create New</h2>
          <${formComponentName} onSuccess={handleSuccess} editId={editingId} />
-       </section>
+       </section>` : ''}
        
        <section className="bg-card p-6 rounded-lg border">
          <h2 className="text-xl font-medium mb-4">All Items</h2>
