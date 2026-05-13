@@ -7,11 +7,16 @@ The official CLI for the MERN Fullstack Starter Kit. Scaffold new projects and e
 | Command | Description |
 |---------|-------------|
 | `init [project-name]` | Create a new project from the starter kit template |
+| `make:resource [name]` | Create a new CRUD resource from schema or wizard |
 | `generate` | Add features to an existing project (`module`, `page`, `theme`, `deploy`) |
 | `remove <type> <name>` | Remove a generated page or module, cleaning up references |
 | `cleanup` | Clean up demo files and branding to prepare project |
 | `customize` | Customize design & branding (`theme`, `layout`, `brand`, `data`) |
 | `wizard` | Interactive guide to extend your project step-by-step |
+| `doctor` | Check environment and project health |
+| `preset [name]` | Apply a predefined configuration preset |
+| `rollback` | Undo the last generation action |
+| `finalize` | Prepare project for production (lint, test, build) |
 
 ## Installation
 

@@ -14,4 +14,6 @@ router.get("/health", (_req, res) => {
 router.use("/auth", authRoutes);
 
 router.use("/products", require("../modules/products/products.routes"));
+router.use("/test-item", require("../modules/test-item/routes/TestItem.routes"));
+router.use("/order", require("../modules/order/routes/Order.routes"));
 module.exports = router;

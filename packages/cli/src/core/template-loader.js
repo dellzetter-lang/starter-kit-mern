@@ -2,6 +2,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import ejs from 'ejs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const HOME = os.homedir();
 
@@ -72,7 +76,6 @@ export class TemplateLoader {
     
     // Compile with EJS
     const compiled = ejs.compile(source, {
-      strict: true,
       filename: fullPath,
       cache: false, // we manage our own cache
       rmWhitespace: true,

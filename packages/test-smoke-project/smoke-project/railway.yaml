@@ -1,0 +1,15 @@
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "env": {
+      "NODE_VERSION": "20"
+    }
+  },
+  "deploy": {
+    "startCommand": "pnpm start",
+    "restartPolicy": {
+      "policy": "ON_FAILURE",
+      "delayMs": 5000
+    }
+  }
+}

@@ -8,9 +8,14 @@
     "dev": "concurrently \"pnpm -C backend dev\" \"pnpm -C frontend dev\"",
     "build": "pnpm -C frontend build",
     "lint": "pnpm -C backend lint && pnpm -C frontend lint",
+    "test": "concurrently \"pnpm -C backend test\" \"pnpm -C frontend test\" \"pnpm -C packages/cli test\"",
+    "test:coverage": "concurrently \"pnpm -C backend test:coverage\" \"pnpm -C frontend test:coverage\" \"pnpm -C packages/cli test:coverage\"",
     "install:all": "pnpm install"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@vitest/coverage-v8": "^4.1.6",
+    "concurrently": "^9.1.2",
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.6"
   }
 }

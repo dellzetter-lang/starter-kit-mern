@@ -15,7 +15,11 @@ const baseContent = {
     registerTitle: "Create account",
     registerDescription: "Set up your secure starter-kit user.",
   },
-  navigation: [nav.dashboard],
+  navigation: [
+      nav.dashboard,
+      { label: "Test Item", href: "/admin/test-item", icon: "layout" },
+      { label: "Order", href: "/admin/order", icon: "layout" },
+    ],
 };
 
 const demoShadcnCss = `

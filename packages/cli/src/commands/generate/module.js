@@ -11,6 +11,37 @@ import { parseFieldSpec } from "../../utils/fieldValidators.js";
 const DEFAULT_FRONTEND_DIR = "frontend";
 const DEFAULT_BACKEND_DIR = "backend";
 
+async function ensureBackendDependencies(projectRoot, backendDir, fields, archLevel) {
+  // Only standard/advanced modules need these dependencies
+  if (archLevel === "lightweight") return;
+
+  const pkgPath = path.join(projectRoot, backendDir, "package.json");
+  if (!fs.existsSync(pkgPath)) return;
+
+  const pkg = await fs.readJSON(pkgPath);
+  const required = {
+    "express-validator": "^7.2.1",
+  };
+
+  // Add slugify if slug/code/sku field exists
+  if (fields.some(f => ["slug", "code", "sku"].includes(f.name))) {
+    required.slugify = "^1.6.6";
+  }
+
+  let changed = false;
+  const deps = pkg.dependencies || (pkg.dependencies = {});
+  for (const [name, version] of Object.entries(required)) {
+    if (!deps[name]) {
+      deps[name] = version;
+      changed = true;
+    }
+  }
+  if (changed) {
+    await fs.writeJSON(pkgPath, pkg, { spaces: 2 });
+    console.log(chalk.green("✓ Added backend dependencies: " + Object.keys(required).join(", ")));
+  }
+}
+
 export default async function generateModuleCmd(name, options) {
   const spinner = ora();
   const projectRoot = process.cwd();
@@ -367,15 +398,18 @@ async function generateModuleFiles(projectRoot, moduleName, archLevel, fields, {
     }
   }
 
-  const routesIndexPath = path.join(projectRoot, backendDir, "src/routes/index.js");
-  if (fs.existsSync(routesIndexPath)) {
-    const routesCode = await fs.readFile(routesIndexPath, "utf-8");
-    const mountLine = `router.use("/${moduleName}", require("../modules/${moduleName}/${moduleName}.routes"));`;
-    if (!routesCode.includes(mountLine)) {
-      await fs.writeFile(routesIndexPath, routesCode.replace("module.exports = router;", `${mountLine}\nmodule.exports = router;`));
-    }
-  }
-}
+   const routesIndexPath = path.join(projectRoot, backendDir, "src/routes/index.js");
+   if (fs.existsSync(routesIndexPath)) {
+     const routesCode = await fs.readFile(routesIndexPath, "utf-8");
+     const mountLine = `router.use("/${moduleName}", require("../modules/${moduleName}/${moduleName}.routes"));`;
+     if (!routesCode.includes(mountLine)) {
+       await fs.writeFile(routesIndexPath, routesCode.replace("module.exports = router;", `${mountLine}\nmodule.exports = router;`));
+     }
+   }
+
+   // Ensure required dependencies are present in backend package.json
+   await ensureBackendDependencies(projectRoot, backendDir, fields, archLevel);
+ }
 
 function generateLightweight(moduleName, pascalName, fields) {
   const schemaFields = fields.map(f => {
@@ -419,19 +453,19 @@ const ${pascalName}Middleware = {
     req.${moduleName}Doc = doc;
     next();
   },
-  sanitizeInput: (req, res, next) => {
-    ${fields.filter(f => ["email","tel","url","text","string"].includes(f.type)).map(f => `if (req.body.${f.name}) req.body.${f.name} = req.body.${f.name}${f.type === "email" ? ".toLowerCase().trim()" : ".trim()"};`).join('\n    ')}
-    next();
-  }
+   sanitizeInput: (req, res, next) => {
+     ${fields.filter(f => ["email","tel","url","text","string"].includes(f.type)).map(f => `if (req.body && req.body.${f.name}) req.body.${f.name} = req.body.${f.name}${f.type === "email" ? ".toLowerCase().trim()" : ".trim()"};`).join('\n    ')}
+     next();
+   }
 };
 module.exports = ${pascalName}Middleware;
 `;
 
   const sanitizationCode = fields.filter(f => ["email","tel","url","text","string"].includes(f.type))
-    .map(f => `if (payload.${f.name}) payload.${f.name} = payload.${f.name}${f.type === "email" ? ".toLowerCase().trim()" : ".trim()"};`).join('\n  ');
+    .map(f => `if (req.body.${f.name}) req.body.${f.name} = req.body.${f.name}${f.type === "email" ? ".toLowerCase().trim()" : ".trim()"};`).join('\n  ');
 
-  const controller = `// ${pascalName} Controller
-const ${pascalName}Model = require("./${moduleName}.model").${pascalName}Model;
+   const controller = `// ${pascalName} Controller
+const ${pascalName}Model = require("./${moduleName}.model").${moduleName}Model;
 const ApiResponse = require("../../utils/ApiResponse");
 const ApiError = require("../../utils/ApiError");
 
@@ -527,10 +561,9 @@ const ${moduleName}Schema = new mongoose.Schema(
 module.exports = mongoose.model("${pascalName}", ${moduleName}Schema);
 `;
 
-  // Service
-  const service = `const ${moduleName}Model = require("./${moduleName}.model");
+   // Service
+   const service = `const ${moduleName}Model = require("./${moduleName}.model");
 const ApiError = require("../../utils/ApiError");
-const { v4: uuidv4 } = require("uuid");
 ${advanced ? `\n/**
  * ${pascalName} Service
  * Handles business logic for ${moduleName} domain

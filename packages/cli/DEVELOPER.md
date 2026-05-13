@@ -98,7 +98,59 @@ fsk cleanup
 
 # Non-interactive
 fsk cleanup --preset minimal
-fsk cleanup --preset production
+```
+
+## Local Development & Testing
+
+Before publishing to npm, you should test the CLI locally to ensure all commands work as expected in a real-world scenario.
+
+### 1. Direct Execution
+The simplest way to run the CLI during development is to point Node directly to the entry script:
+```bash
+# From packages/cli directory
+node bin/cli.js --help
+
+# Run init from a different directory
+node /path/to/fsk/packages/cli/bin/cli.js init my-new-app
+```
+
+### 2. Global Linking (Recommended)
+To test the `fsk` command globally as if it were installed via npm:
+```bash
+# From packages/cli directory
+pnpm link --global
+
+# Now you can use 'fsk' anywhere
+fsk --version
+fsk doctor
+```
+*Note: If using `npm`, use `npm link`. To undo, use `pnpm unlink --global @fullstack-starter/cli`.*
+
+### 3. Testing Scaffolding
+To verify the full generation flow:
+1. Create a temporary test directory.
+2. Run `fsk init test-app`.
+3. Enter the new app: `cd test-app`.
+4. Run `pnpm dev` to ensure the project starts correctly.
+5. Test generation: `fsk make:resource Product --fields "name:str;price:num"`.
+
+### 4. Production Dry-Run (npm pack)
+To see exactly what files will be included in the npm package:
+```bash
+# From packages/cli directory
+npm pack --dry-run
+```
+This will list all files that will be uploaded to npm based on the `files` array in `package.json`.
+
+## Publication Readiness Checklist
+
+- [ ] Version bumped in `package.json` (following Semantic Versioning).
+- [ ] `npm audit` returns zero high-severity vulnerabilities.
+- [ ] `pnpm test` passes with 85%+ coverage.
+- [ ] `fsk doctor` passes in a clean environment.
+- [ ] `README.md` and `CLI_USAGE.md` are up to date.
+- [ ] Multi-platform check (Windows/macOS/Linux).
+- [ ] Node.js compatibility (18.x, 20.x, 22.x).fsk cleanup --preset production
 fsk cleanup --preset template
 ```
 

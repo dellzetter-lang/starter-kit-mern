@@ -7,6 +7,11 @@ const logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
+    winston.format((info) => {
+      const { requestId } = require('cls-rtracer').id() || {};
+      if (requestId) info.requestId = requestId;
+      return info;
+    })(),
     winston.format.json()
   ),
   transports: [new winston.transports.Console()],

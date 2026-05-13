@@ -1,5 +1,5 @@
-const <%= resource.pascalName %>Model = require('./<%= resource.name %>.model');
-const ApiError = require('../../utils/ApiError');
+const <%= resource.pascalName %>Model = require('../models/<%= resource.name %>');
+const ApiError = require('../../../utils/ApiError');
 <% if (options.architecture === 'advanced') { %>
 const mongoose = require('mongoose');
 <% } %>
@@ -12,21 +12,21 @@ const mongoose = require('mongoose');
 class <%= resource.pascalName %>Service {
 <% } %>
 
-const create<%= resource.pascalName %> = async (payload) => {
-  // Sanitize string fields (trim, lowercase email)
-  <% resource.fields.forEach(function(field) { %>
-    <% if (['email','phone','url','string','text'].includes(field.type)) { %>
-  if (payload.<%= field.name %>) {
-    <% if (field.type === 'email') { %>
-    payload.<%= field.name %> = payload.<%= field.name %>.toLowerCase().trim();
-    <% } else if (field.type === 'phone') { %>
-    payload.<%= field.name %> = payload.<%= field.name %>.replace(/[^+0-9]/g, '');
-    <% } else { %>
-    payload.<%= field.name %> = payload.<%= field.name %>.trim();
-    <% } %>
-  }
-    <% } %>
-  <% }); %>
+ const create<%= resource.pascalName %> = async (payload) => {
+   // Sanitize input
+   <% resource.fields.forEach(function(field) { %>
+     <% if (['email','phone','url','string','text'].includes(field.type)) { %>
+   if (payload.<%- field.name %>) {
+     <% if (field.type === 'email') { %>
+     payload.<%- field.name %> = payload.<%- field.name %>.toLowerCase().trim();
+     <% } else if (field.type === 'phone') { %>
+     payload.<%- field.name %> = payload.<%- field.name %>.replace(/[^+0-9]/g, '');
+     <% } else { %>
+     payload.<%- field.name %> = payload.<%- field.name %>.trim();
+     <% } %>
+   }
+     <% } %>
+   <% }); %>
 
   // Auto-generate slug/code from name if not provided
   <% const slugField = resource.fields.find(f => ['slug','code','sku'].includes(f.name)); %>
@@ -40,20 +40,20 @@ const create<%= resource.pascalName %> = async (payload) => {
   return await <%= resource.pascalName %>Model.create(payload);
 };
 
-const getAll<%= resource.pascalName %>s = async (filters = {}) => {
-  const query = <%= resource.pascalName %>Model.find({});
+ const getAll<%= resource.pascalName %>s = async (filters = {}) => {
+   const query = <%= resource.pascalName %>Model.find({});
 
-  // Apply filter conditions
-  <% resource.fields.forEach(function(field) { %>
-    <% if (field.type === 'number' || field.type === 'date' || field.type === 'datetime' || field.type === 'range') { %>
-  // Range filters: <%= field.name %>Min, <%= field.name %>Max
-  if (filters.<%= field.name %>Min) query = query.where('<%= field.name %>').gte(filters.<%= field.name %>Min);
-  if (filters.<%= field.name %>Max) query = query.where('<%= field.name %>').lte(filters.<%= field.name %>Max);
-    <% } else { %>
-  // Equality filter
-  if (filters.<%= field.name %>) query = query.where('<%= field.name %>').equals(filters.<%= field.name %>);
-    <% } %>
-  <% }); %>
+   // Apply filter conditions
+   <% resource.fields.forEach(function(field) { %>
+     <% if (field.type === 'number' || field.type === 'date' || field.type === 'datetime' || field.type === 'range') { %>
+   // Range filters: <%- field.name %>Min, <%- field.name %>Max
+   if (filters.<%- field.name %>Min) query = query.where('<%- field.name %>').gte(filters.<%- field.name %>Min);
+   if (filters.<%- field.name %>Max) query = query.where('<%- field.name %>').lte(filters.<%- field.name %>Max);
+     <% } else { %>
+   // Equality filter
+   if (filters.<%- field.name %>) query = query.where('<%- field.name %>').equals(filters.<%- field.name %>);
+     <% } %>
+   <% }); %>
 
   // Pagination
   const page = filters.page || 1;
@@ -65,17 +65,17 @@ const getAll<%= resource.pascalName %>s = async (filters = {}) => {
     query = query.sort({ [filters.sort]: order });
   }
 
-  // Populate relations (if requested)
-  <% if (resource.relations && resource.relations.hasMany && resource.relations.hasMany.length > 0) { %>
-  if (filters.populate) {
-    const populateList = Array.isArray(filters.populate) ? filters.populate : [filters.populate];
-    <% resource.relations.hasMany.forEach(function(rel) { %>
-    if (populateList.includes('<%= rel.field %>') || populateList.includes('*')) {
-      query = query.populate('<%= rel.field %>');
-    }
-    <% }); %>
-  }
-  <% } %>
+   // Populate relations (if requested)
+   <% if (resource.relations && resource.relations.hasMany && resource.relations.hasMany.length > 0) { %>
+   if (filters.populate) {
+     const populateList = Array.isArray(filters.populate) ? filters.populate : [filters.populate];
+     <% resource.relations.hasMany.forEach(function(rel) { %>
+     if (populateList.includes('<%- rel.field %>') || populateList.includes('*')) {
+       query = query.populate('<%- rel.field %>');
+     }
+     <% }); %>
+   }
+   <% } %>
 
   query = query.skip(skip).limit(limit);
   return await query.exec();
@@ -91,21 +91,21 @@ const get<%= resource.pascalName %>ByUnique = async (field, value) => {
   return await <%= resource.pascalName %>Model.findOne({ [field]: value });
 };
 
-const update<%= resource.pascalName %> = async (id, updates) => {
-  // Sanitize
-  <% resource.fields.forEach(function(field) { %>
-    <% if (['email','phone','url','string','text'].includes(field.type)) { %>
-  if (updates.<%= field.name %>) {
-    <% if (field.type === 'email') { %>
-    updates.<%= field.name %> = updates.<%= field.name %>.toLowerCase().trim();
-    <% } else if (field.type === 'phone') { %>
-    updates.<%= field.name %> = updates.<%= field.name %>.replace(/[^+0-9]/g, '');
-    <% } else { %>
-    updates.<%= field.name %> = updates.<%= field.name %>.trim();
-    <% } %>
-  }
-    <% } %>
-  <% }); %>
+ const update<%= resource.pascalName %> = async (id, updates) => {
+   // Sanitize
+   <% resource.fields.forEach(function(field) { %>
+     <% if (['email','phone','url','string','text'].includes(field.type)) { %>
+   if (updates.<%- field.name %>) {
+     <% if (field.type === 'email') { %>
+     updates.<%- field.name %> = updates.<%- field.name %>.toLowerCase().trim();
+     <% } else if (field.type === 'phone') { %>
+     updates.<%- field.name %> = updates.<%- field.name %>.replace(/[^+0-9]/g, '');
+     <% } else { %>
+     updates.<%- field.name %> = updates.<%- field.name %>.trim();
+     <% } %>
+   }
+     <% } %>
+   <% }); %>
 
   const doc = await <%= resource.pascalName %>Model.findByIdAndUpdate(
     id, 

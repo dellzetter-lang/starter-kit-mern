@@ -24,6 +24,11 @@ import remove from "../src/commands/remove.js";
 import wizard from "../src/commands/wizard.js";
 import customize from "../src/commands/customize.js";
 import cleanup from "../src/commands/cleanup.js";
+import finalize from "../src/commands/finalize.js";
+import rollback from "../src/commands/rollback.js";
+import doctor from "../src/commands/doctor.js";
+import preset from "../src/commands/preset.js";
+import makeResource from "../src/commands/make/resource.js";
 
 program
   .name("fsk")
@@ -97,7 +102,11 @@ generateCmd
   .option("--icon <name>", "Icon name from lucide-react")
   .option("--force", "Overwrite existing files")
   .option("--with-form", "Generate form component")
-  .option("--form-mode <mode>", "Form display mode: page|modal|sidepanel|inline", "page")
+  .option(
+    "--form-mode <mode>",
+    "Form display mode: page|modal|sidepanel|inline",
+    "page",
+  )
   .option("--form-fields <spec>", "Form field specification")
   .option("--interactive", "Prompt for form fields interactively")
   .action(generatePage);
@@ -148,7 +157,7 @@ const customizeCmd = program
 // ── Theme subcommand group ──
 const themeCmd = customizeCmd.command("theme").description("Theme operations");
 themeCmd
-  .command("set <theme>")
+  .command("set [theme]")
   .description("Switch to a built-in theme")
   .action(customize.customizeThemeSet);
 themeCmd
@@ -165,7 +174,7 @@ const layoutCmd = customizeCmd
   .command("layout")
   .description("Layout operations");
 layoutCmd
-  .command("set <layout>")
+  .command("set [layout]")
   .description("Switch layout shell")
   .action(customize.customizeLayoutSet);
 
@@ -183,7 +192,7 @@ const dataCmd = customizeCmd
   .command("data")
   .description("Data display template operations");
 dataCmd
-  .command("set <template>")
+  .command("set [template]")
   .description("Switch data display template")
   .action(customize.customizeDataSet);
 
@@ -200,5 +209,49 @@ customizeCmd
   .command("list-data")
   .description("List available data display templates")
   .action(customize.customizeListData);
+
+// Finalize
+program
+  .command("finalize")
+  .description("Prepare project for production (lint, test, build)")
+  .action(finalize);
+
+// Rollback
+program
+  .command("rollback")
+  .description("Undo the last generation action")
+  .option("-f, --force", "Skip confirmation")
+  .option("-v, --verbose", "Show detailed logs")
+  .action(rollback);
+
+// Doctor
+program
+  .command("doctor")
+  .description("Check environment and project health")
+  .action(doctor);
+
+// Preset
+program
+  .command("preset [name]")
+  .description("Apply a predefined configuration preset (saas, clinic, etc.)")
+  .action(preset);
+
+// Make Resource
+program
+  .command("make:resource [name]")
+  .description("Create a new resource from schema or interactive wizard")
+  .option("-f, --file <path>", "Path to resource definition file")
+  .option("--fields <spec>", "Field specification (name:type:rules;...)")
+  .option("-i, --interactive", "Run interactive wizard")
+  .option("--dry-run", "Preview changes without writing")
+  .option("--force", "Overwrite existing files")
+  .option(
+    "--arch <level>",
+    "Architecture: lightweight|moderate|advanced",
+    "moderate",
+  )
+  .option("--no-frontend", "Skip frontend generation")
+  .option("--with-tests", "Generate test files")
+  .action(makeResource);
 
 program.parse();

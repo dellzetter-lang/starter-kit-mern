@@ -1,34 +1,38 @@
 /**
  * MarkerStrategy — preserves custom code during regeneration
- * 
- * Generated files are split into regions:
- *   [Prelude]   — everything before AUTO-GENERATED marker (imports, license, etc)
- *   [AutoBlock] — the generated code (replaced on regeneration)
- *   [Custom]    — developer's custom edits (preserved forever)
- *   [Epilogue]  — everything after END marker (module.exports, etc if outside markers)
  */
 
 const MARKERS = {
   // Matches the entire auto-generated block including header/footer
-  block: /^(\/\/ ═+ AUTO-GENERATED[\s\S]*?\/\/ ═+)\s*$/m,
-  
-  // Extract just the content between the dashed lines
-  autoContent: /^\/\/ ═+ AUTO-GENERATED — DO NOT EDIT MANUALLY\s*[\r\n]+(?:\/\/ .*\s*)*\/\/ ═+\s*[\r\n]+([\s\S]*?)\s*[\r\n]+\/\/ ═+ END AUTO-GENERATED\s*$/m,
-  
-  // Custom code zone marker
-  customZone: /\/\/ ✎ CUSTOM CODE ZONE[\s\S]*?\/\/ ─+[\s\S]*?$/m,
+  block:
+    /(\/\/═+\s*[\r\n]+\/\/ AUTO-GENERATED[\s\S]*?\/\/═+ END AUTO-GENERATED\s*[\r\n]+\/\/═+)/m,
+
+  header: (resourceName, timestamp, stealth = false) => {
+    if (stealth)
+      return `//══════════════════════════════════════════════════════════════════════════════
+// AUTO-GENERATED — DO NOT EDIT MANUALLY
+//══════════════════════════════════════════════════════════════════════════════`;
+
+    return `//══════════════════════════════════════════════════════════════════════════════
+// AUTO-GENERATED — DO NOT EDIT MANUALLY
+// Resource: ${resourceName || "Unknown"}
+// Generated at: ${timestamp || new Date().toISOString()}
+//══════════════════════════════════════════════════════════════════════════════`;
+  },
+
+  footer: `//══════════════════════════════════════════════════════════════════════════════
+// END AUTO-GENERATED
+//══════════════════════════════════════════════════════════════════════════════`,
 };
 
 export class MarkerStrategy {
-  /**
-   * Parse a file into sections
-   * @returns {Object} { hasMarkers, prelude, autoBlock, customBlock, epilogue }
-   */
   static parse(content) {
-    const blockMatch = content.match(MARKERS.block);
-    
+    // Very flexible regex for parsing
+    const flexibleBlock =
+      /(\/\/[═-]+\s*[\r\n]+\/\/ AUTO-GENERATED[\s\S]*?\/\/[═-]+ END AUTO-GENERATED\s*[\r\n]+\/\/[═-]+)/m;
+    const blockMatch = content.match(flexibleBlock);
+
     if (!blockMatch) {
-      // No markers — entire file is custom (first-time generation)
       return { hasMarkers: false, full: content };
     }
 
@@ -36,15 +40,40 @@ export class MarkerStrategy {
     const blockStart = blockMatch.index;
     const blockEnd = blockStart + fullBlock.length;
 
-    // Extract auto content (between dashed lines)
-    const autoContentMatch = fullBlock.match(MARKERS.autoContent);
-    const autoBlock = autoContentMatch ? autoContentMatch[1].trim() : fullBlock;
+    const lines = fullBlock.split(/\r?\n/);
 
-    // Look for custom zone within auto block (if regenerating once)
-    let customBlock = '';
-    const customMatch = fullBlock.match(MARKERS.customZone);
-    if (customMatch) {
-      customBlock = customMatch[0];
+    // Find auto content (between header and footer)
+    let headerEndIdx = -1;
+    let separatorCount = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes("════════") || lines[i].includes("--------")) {
+        separatorCount++;
+        if (separatorCount === 2) {
+          headerEndIdx = i + 1;
+          break;
+        }
+      }
+    }
+
+    let footerStartIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes("END AUTO-GENERATED")) {
+        footerStartIdx = i - 1;
+        break;
+      }
+    }
+
+    let autoBlock = "";
+    if (headerEndIdx > 0 && footerStartIdx > headerEndIdx) {
+      autoBlock = lines.slice(headerEndIdx, footerStartIdx).join("\n").trim();
+    }
+
+    // Look for custom zone
+    const customZoneMarker = "// ✎ CUSTOM CODE ZONE";
+    let customBlock = "";
+    const customIdx = content.indexOf(customZoneMarker);
+    if (customIdx !== -1) {
+      customBlock = content.slice(customIdx);
     }
 
     return {
@@ -53,73 +82,53 @@ export class MarkerStrategy {
       autoBlock,
       customBlock,
       epilogue: content.slice(blockEnd),
-      fullBlock, // the entire matched block including markers
+      fullBlock,
     };
   }
 
-  /**
-   * Compose new file content by replacing auto block only
-   */
-  static compose(parsed, newAutoBlock) {
+  static compose(parsed, newAutoBlock, options = {}) {
     if (!parsed.hasMarkers) {
-      // First generation: wrap entire content
-      return MarkerStrategy.wrapWithMarkers(newAutoBlock);
+      return MarkerStrategy.wrapWithMarkers(newAutoBlock, "", options);
     }
 
-    // Reconstruct the full marker block with new auto content
     const timestamp = new Date().toISOString();
-    const header = `// ═══════════════════════════════════════════════════════════════════════════
-// AUTO-GENERATED — DO NOT EDIT MANUALLY
-// Generated at: ${timestamp}
-// ═══════════════════════════════════════════════════════════════════════════`;
-    
-    const footer = `// ═══════════════════════════════════════════════════════════════════════════
-// END AUTO-GENERATED
-// ═══════════════════════════════════════════════════════════════════════════`;
+    const header = MARKERS.header(
+      parsed.resourceName,
+      timestamp,
+      options.stealth,
+    );
+    const footer = MARKERS.footer;
 
-    const autoSection = `${header}\n\n${newAutoBlock}\n\n${footer}`;
+    const autoSection = `${header}\n\n${newAutoBlock.trim()}\n\n${footer}`;
 
-    // If there's existing custom code, append it
-    const customNote = parsed.customBlock 
-      ? `\n\n${parsed.customBlock}\n`
-      : '\n\n// ✎ CUSTOM CODE ZONE — YOUR CODE HERE\n// Add custom logic below. This section is preserved during regeneration.\n// ────────────────────────────────────────────────────────────────────────────\n';
+    // Preserve existing custom code if it exists
+    const customSection = parsed.customBlock
+      ? `\n\n${parsed.customBlock}`
+      : "\n\n// ✎ CUSTOM CODE ZONE — YOUR CODE HERE\n// Add custom logic below. This section is preserved during regeneration.\n// ────────────────────────────────────────────────────────────────────────────\n";
 
-    return parsed.prelude + autoSection + customNote + parsed.epilogue;
+    return parsed.prelude + autoSection + customSection + parsed.epilogue;
   }
 
-  /**
-   * Create initial wrapped content for new file
-   */
-  static wrapWithMarkers(autoContent, resourceName = '') {
+  static wrapWithMarkers(autoContent, resourceName = "", options = {}) {
     const timestamp = new Date().toISOString();
-    return `// ═══════════════════════════════════════════════════════════════════════════
-// AUTO-GENERATED — DO NOT EDIT MANUALLY
-// Resource: ${resourceName}
-// Generated at: ${timestamp}
-// ═══════════════════════════════════════════════════════════════════════════
+    const header = MARKERS.header(resourceName, timestamp, options.stealth);
+    const footer = MARKERS.footer;
 
-${autoContent}
+    const customZone =
+      "\n\n// ✎ CUSTOM CODE ZONE — YOUR CODE HERE\n// Add custom logic below. This section is preserved during regeneration.\n// ────────────────────────────────────────────────────────────────────────────\n";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// END AUTO-GENERATED
-// ═══════════════════════════════════════════════════════════════════════════`;
+    return `${header}\n\n${autoContent.trim()}\n\n${footer}${customZone}`;
   }
 
-  /**
-   * Ensure file has markers; if not, add them (for first-time regen)
-   */
-  static ensureMarkers(content, resourceName) {
-    if (MARKERS.block.test(content)) {
-      return content; // already has markers
+  static ensureMarkers(content, resourceName, options = {}) {
+    if (MarkerStrategy.parse(content).hasMarkers) {
+      return content;
     }
-    return MarkerStrategy.wrapWithMarkers(content, resourceName);
+    return MarkerStrategy.wrapWithMarkers(content, resourceName, options);
   }
 
-  /**
-   * Extract just the auto block from existing file (for comparison)
-   */
   static extractAutoBlock(content) {
     const parsed = MarkerStrategy.parse(content);
-    return parsed.hasMarkers ? parsed.autoBlock : content;
+    return parsed.hasMarkers ? parsed.autoBlock : content.trim();
   }
 }

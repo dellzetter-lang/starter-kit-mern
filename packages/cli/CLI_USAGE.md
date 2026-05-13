@@ -55,6 +55,59 @@ fsk init my-app \
 
 ---
 
+### `fsk make:resource <name>`
+
+Generate a full CRUD resource (backend + frontend) from a schema.
+
+#### Examples
+
+**Interactive Wizard:**
+```bash
+fsk make:resource -i
+```
+
+**Schema-based:**
+```bash
+fsk make:resource Product --fields "name:str[required];price:num[min=0];category:ref[Category]"
+```
+
+**Advanced Architecture:**
+```bash
+fsk make:resource Order --fields "total:num;status:select[pending,paid,shipped]" --arch advanced --with-tests
+```
+
+---
+
+### `fsk doctor`
+
+Checks your environment and project for common issues.
+
+```bash
+fsk doctor
+```
+
+---
+
+### `fsk rollback`
+
+Undoes the last generation action.
+
+```bash
+fsk rollback
+```
+
+---
+
+### `fsk finalize`
+
+Runs linting, tests, and builds the project for production.
+
+```bash
+fsk finalize
+```
+
+---
+
 ### `fsk generate module <module-name>`
 
 Generate a backend module with full CRUD support.

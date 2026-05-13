@@ -1,6 +1,6 @@
-const service = require('./<%= resource.name %>.service');
-const ApiResponse = require('../../utils/ApiResponse');
-const ApiError = require('../../utils/ApiError');
+const service = require('../services/<%= resource.name %>.service');
+const ApiResponse = require('../../../utils/ApiResponse');
+const ApiError = require('../../../utils/ApiError');
 
 // ── Create ───────────────────────────────────────────────────────────────────
 const create = async (req, res, next) => {

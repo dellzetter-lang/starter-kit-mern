@@ -8,31 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Interactive prompt support for `fsk generate page --with-form --interactive` to guide users through form field creation
-- Unified resource generator (`fsk make resource`) for end-to-end module + page generation
-- Select/dropdown field type with options array support in forms
-- Boolean checkbox field with proper UI handling
-- Hidden field type for internal state management
-- Color picker, date/time pickers, file upload fields in form generator
-- Range slider with live value display
-- Zod schema generation option for type-safe frontend validation
-- Auto-API wiring when generating pages with forms (optional)
-- Rich text (WYSIWYG) field support with maxLength detection
-- Array/tags field support for multi-select scenarios
-- Relationship/foreign key field support with dropdown population
-- Edit mode for forms with data pre-population
-- Pagination controls in generated table/list views
-- Enhanced validation messages with field labels
-- Multi-language/i18n stub support in forms
-- **Cleanup command** (`fsk cleanup`) with presets: minimal, production, template
-- **Form display modes**: `--form-mode modal|sidepanel|inline|page` for flexible UI layouts
-- **Radix UI Dialog & Sheet primitives** for modal and sidepanel form overlays
-- **Form `onSuccess` callback** enabling automatic modal/sheet dismissal after submission
-- **Strict form validation**: `=== undefined || === null || === ''` checks to correctly handle `0` and `false` values
-- **Number field**: default value `0`, with min/max validation
-- **Boolean field**: default value `false`, rendered as checkbox with `checked` handling
-- **Input sanitization utilities** (`@/utils/sanitize`) for email, URL, phone, text, number, boolean
-- `--form-mode` option on `fsk generate module --with-page` to control generated page layout
+- Systematic Quality Assurance process with comprehensive testing protocols
+- Unit and integration testing infrastructure using Vitest and Supertest
+- 85% coverage thresholds for core backend logic
+- Automated CI/CD pipeline with GitHub Actions
+- Security scanning infrastructure with Snyk and npm audit
+- Performance benchmarking with K6 load testing
+- Strict TypeScript configuration for type safety across all packages
+- Enhanced error handling with Winston logging and correlation IDs (cls-rtracer)
+- OpenAPI 3.0 documentation with Swagger UI
+- Docker production configurations with multi-stage builds
+- Code of Conduct and Contributing guidelines
+- MIT License file
 
 ### Changed
 - **Fixed**: Navigation entry template literals now properly interpolate values instead of writing `${...}` literally

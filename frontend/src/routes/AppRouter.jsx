@@ -11,6 +11,8 @@ const LandingPage = lazy(() => import("@/pages/landing/LandingPage"));
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
 const RegisterPage = lazy(() => import("@/pages/auth/RegisterPage"));
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage"));
+const OrderList = lazy(() => import("@/pages/admin/order/ListPage"));
+const TestItemList = lazy(() => import("@/pages/admin/test-item/ListPage"));
 
 export function AppRouter() {
   return (
@@ -24,6 +26,18 @@ export function AppRouter() {
         <Route element={<ProtectedRoute />}>
           <Route path={ROUTES.DASHBOARD} element={<AppShell secure><DashboardPage /></AppShell>} />
         </Route>
+
+              {/* TestItem */}
+              <Route
+                path="/admin/test-item"
+                element={<AppShell secure><TestItemList /></AppShell>}
+              />
+
+              {/* Order */}
+              <Route
+                path="/admin/order"
+                element={<AppShell secure><OrderList /></AppShell>}
+              />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
